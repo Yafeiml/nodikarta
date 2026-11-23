@@ -36,6 +36,14 @@ ShowInstDetails show
 Var setupMode
 
 Function .onInit
+  SetRegView 64
+  !ifndef FIXTURE
+    ${If} $INSTDIR == "$LOCALAPPDATA\Programs\Nodicarta\Edge"
+      ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Nodicarta.Edge" "InstallLocation"
+      StrCmp $0 "" +2 0
+        StrCpy $INSTDIR "$0"
+    ${EndIf}
+  !endif
   !ifdef FIXTURE
     ReadEnvStr $0 "NODICARTA_EDGE_SETUP_TEST_HOME"
     StrCmp $0 "" 0 +3

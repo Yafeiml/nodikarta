@@ -122,6 +122,17 @@ try
         Marshal.FinalReleaseComObject((object)shortcut);
     }
     finally { Marshal.FinalReleaseComObject((object)shell); }
+    var installLinks = new ReleaseLinks(directory.FullName);
+    ReleaseLinks.Write(installLinks.Paths[1], a, "--background " + ReleaseLinks.StateArguments(originalState));
+    var startupOnly = new ReleaseLinks(directory.FullName);
+    if (startupOnly.ExistingState != originalState || !startupOnly.StartupEnabled || startupOnly.ExistingDesktop != a)
+        throw new Exception("The only existing login shortcut lost its data directory.");
+    ReleaseLinks.Write(installLinks.Paths[0], a, "");
+    if (new ReleaseLinks(directory.FullName).ExistingState != originalState)
+        throw new Exception("A menu link without --state overrode the login link's custom data directory.");
+    ReleaseLinks.Write(installLinks.Paths[0], a, ReleaseLinks.StateArguments(Path.Combine(directory.FullName, "other state")));
+    try { _ = new ReleaseLinks(directory.FullName); throw new Exception("Conflicting shortcut data was silently selected."); }
+    catch (IOException) { }
     Console.WriteLine("PASS: machine-wide lease, repeated launch, stale login start, graceful move, custom state, persisted location, managed shortcuts.");
     return 0;
 }

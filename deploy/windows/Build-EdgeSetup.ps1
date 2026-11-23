@@ -11,12 +11,8 @@ $package = (Get-Item -LiteralPath $PackageDirectory).FullName
 $bin = Join-Path $package 'bin'
 . (Join-Path $PSScriptRoot 'Test-EdgeRelease.ps1')
 Test-EdgeRelease $bin (Join-Path $package 'SHA256SUMS')
-$metadata = Get-Content -LiteralPath (Join-Path $bin 'nodicarta-release.json') -Raw | ConvertFrom-Json
-if ($Version.ToString() -notmatch '^\d+\.\d+\.\d+$' -or $metadata.version -ne $Version.ToString() -or
-    $metadata.releaseLine -ne 'public-v1' -or $metadata.rid -ne 'win-x64' -or $metadata.publisherKeyId -notmatch '^[a-f0-9]{64}$' -or
-    (Get-Item -LiteralPath (Join-Path $bin 'ProjectHub.Edge.Desktop.exe')).VersionInfo.ProductVersion -ne $Version.ToString()) {
-    throw 'The public Windows package must contain the matching version and publisher identity.'
-}
+. (Join-Path $PSScriptRoot 'ValidateReleaseTrust.ps1')
+Assert-EdgeSetupTrust $bin $Version $TestScope.IsPresent
 $out = [IO.Directory]::CreateDirectory([IO.Path]::GetFullPath($OutputDirectory)).FullName
 $setup = Join-Path $out "Nodicarta-Edge-$Version-win-x64-setup.exe"
 $options = @('/V2', "/DPACKAGE=$package", "/DOUTPUT=$setup", "/DVERSION=$Version",

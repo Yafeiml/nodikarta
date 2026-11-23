@@ -9,26 +9,22 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $testing = $PSCmdlet.ParameterSetName -eq 'Test'
+. (Join-Path $PSScriptRoot 'ValidateReleaseTrust.ps1')
 $pem = (Resolve-Path (Join-Path $PSScriptRoot '../../release/edge-update-public.pem')).Path
-$pub = [Security.Cryptography.ECDsa]::Create()
-try {
-    $pub.ImportFromPem([IO.File]::ReadAllText($pem))
-    $official = [Convert]::ToBase64String($pub.ExportSubjectPublicKeyInfo())
-    $feed = [uri]'https://github.com/Yafeiml/nodikarta/releases/latest/download/nodicarta-edge-stable-win-x64.json'
-    if ($testing) {
-        if (!$TestFeed.IsLoopback -or $TestFeed.Scheme -ne 'http' -or $TestFeed.UserInfo -or $TestFeed.Query -or $TestFeed.Fragment -or
-            $TestFeed.Segments[-1] -cne 'nodicarta-edge-stable-win-x64.json') { throw 'A loopback test feed is required.' }
-        $feed = $TestFeed
-        $pub.ImportFromPem([IO.File]::ReadAllText((Resolve-Path -LiteralPath $TestPublicKeyFile)))
-    }
-    $key = [Convert]::ToBase64String($pub.ExportSubjectPublicKeyInfo())
-    if ($pub.ExportParameters($false).Curve.Oid.Value -ne '1.2.840.10045.3.1.7' -or ($testing -and $key -eq $official)) {
-        throw 'The test and public channels require independent P-256 keys.'
-    }
-} finally { $pub.Dispose() }
+$official = Get-EdgePublicSpki $pem
+$key = $official
+$feed = [uri](Get-EdgeStableFeed)
+if ($testing) {
+    if (!$TestFeed.IsLoopback -or $TestFeed.Scheme -ne 'http' -or $TestFeed.UserInfo -or $TestFeed.Query -or $TestFeed.Fragment -or
+        $TestFeed.Segments[-1] -cne 'nodicarta-edge-stable-win-x64.json') { throw 'A loopback test feed is required.' }
+    $feed = $TestFeed
+    $key = Get-EdgePublicSpki (Resolve-Path -LiteralPath $TestPublicKeyFile).Path
+    if ($key -ceq $official) { throw 'The test and public channels require independent P-256 keys.' }
+}
 $channel = if ($testing) { 'test' } else { 'stable' }
 $out = [IO.Directory]::CreateDirectory((Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "$channel/$Version")).FullName
-$package = & (Join-Path $PSScriptRoot 'Publish-Edge.ps1') -Desktop -Version $Version -OutputDirectory $out -UpdateFeed $feed -PublisherPublicKey $key -TestChannel:$testing |
+$archiveDirectory = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "test-archives/$channel/$Version"
+$package = & (Join-Path $PSScriptRoot 'Publish-Edge.ps1') -Desktop -Version $Version -OutputDirectory $archiveDirectory -UpdateFeed $feed -PublisherPublicKey $key -TestChannel:$testing |
     Where-Object { $_.PSObject.Properties['Archive'] }
 if (!$package -or ![IO.File]::Exists($package.Archive)) { throw 'Desktop build did not return a verified archive.' }
 $setup = & (Join-Path $PSScriptRoot 'Build-EdgeSetup.ps1') -PackageDirectory $package.Directory -Version $Version -OutputDirectory $out -TestScope:$testing |

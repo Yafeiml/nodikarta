@@ -158,10 +158,11 @@ internal static class ReleaseInstallation
         var oldMarker = Snapshot(Path.Combine(root, Receipt));
         if (oldMarker != null) VerifyPublisher(oldMarker, key);
         var previousMeta = oldExe == null ? null : Path.Combine(Path.GetDirectoryName(oldExe)!, "nodicarta-release.json");
-        if (previousMeta != null && File.Exists(previousMeta))
+        bool previousPublic = previousMeta != null && File.Exists(previousMeta);
+        if (previousPublic)
         {
-            CodexAccessFile.CheckPath(previousMeta);
-            using var previous = JsonDocument.Parse(File.ReadAllBytes(previousMeta));
+            CodexAccessFile.CheckPath(previousMeta!);
+            using var previous = JsonDocument.Parse(File.ReadAllBytes(previousMeta!));
             if (previous.RootElement.GetProperty("releaseLine").GetString() != "public-v1" ||
                 !ReleaseLinks.Same(previous.RootElement.GetProperty("publisherKeyId").GetString(), key) ||
                 previous.RootElement.GetProperty("channel").GetString() != DesktopUpdates.Channel)
@@ -171,8 +172,9 @@ internal static class ReleaseInstallation
         var previousVersion = oldExe == null ? null : Version.Parse(FileVersionInfo.GetVersionInfo(oldExe).ProductVersion!.Split('+')[0]);
         if (action == "update" && (old == null || oldMarker == null || links.ExistingDesktop != null && !ReleaseLinks.Same(oldExe, links.ExistingDesktop) || previousVersion >= version))
             throw new InvalidOperationException("Automatic update requires a newer release of this installed product.");
-        if (oldMarker != null && (old == null || previousVersion > version)) throw new IOException("Downgrading a public installation is not supported.");
-        if (oldMarker == null && oldExe != null && previousVersion >= version && action != "migrate")
+        if (oldMarker != null && old == null || (oldMarker != null || previousPublic) && previousVersion > version)
+            throw new IOException("Downgrading or replacing an incomplete public installation is not supported.");
+        if (!previousPublic && oldMarker == null && oldExe != null && previousVersion >= version && action != "migrate")
         {
             if (action != "interactive" || MessageBoxW(0, $"将开发版 {previousVersion} 迁移到正式发行版 {version}，沿用当前设备数据？\n\nMigrate development build {previousVersion} to release {version} and keep this device's data?",
                     "Nodicarta Edge", 0x124) != 6) throw new IOException("Development migration requires explicit consent (/MIGRATEDEV).");
@@ -225,8 +227,7 @@ internal static class ReleaseInstallation
             !ReleaseLinks.Same(node.GetProperty("publisher").GetString(), expectedKey)) throw new IOException("Different update publisher or channel.");
     }
 
-    private static bool KnownLauncher(string root, string hash) => Directory.EnumerateDirectories(root)
-        .Where(path => ReleasePackage.IsId(Path.GetFileName(path))).Any(path => new ReleasePackage(path, true).MatchesLauncher(hash));
+    private static bool KnownLauncher(string root, string hash) => ReleasePackage.Installed(root).Any(package => package.MatchesLauncher(hash));
 
     private static Process? Resident(string path)
     {
@@ -326,14 +327,8 @@ internal static class ReleaseInstallation
     {
         var actual = ReleasePackage.Active(root) ?? throw new IOException("Could not identify this installation.");
         VerifyPublisher(File.ReadAllBytes(Path.Combine(root, Receipt)), DesktopUpdates.PublisherKeyId ?? "");
-        var packages = Directory.EnumerateDirectories(root).Where(d => ReleasePackage.IsId(Path.GetFileName(d)))
-            .Select(d => new ReleasePackage(d, true)).ToArray();
-        foreach (var package in packages)
-        {
-            package.Verify();
-            if (Directory.GetFileSystemEntries(package.DirectoryPath).Length != 2)
-                throw new IOException("Unexpected files in release directory.");
-        }
+        var packages = ReleasePackage.Installed(root).ToArray();
+        if (packages.All(package => package.Id != actual.Id)) throw new IOException("Could not verify the currently installed release.");
         string launcher = Path.Combine(root, ReleasePackage.Cli);
         if (!KnownLauncher(root, ReleasePackage.Hash(launcher))) throw new IOException("Unrecognized MCP launcher.");
         foreach (var cli in Process.GetProcessesByName("ProjectHub.Edge"))
@@ -350,7 +345,7 @@ internal static class ReleaseInstallation
         StopExisting(actual.Executable);
         if (ReleaseLinks.Same(links.ExistingDesktop, actual.Executable))
             foreach (var link in links.Paths) if (File.Exists(link)) File.Delete(link);
-        foreach (var package in packages) Directory.Delete(package.DirectoryPath, recursive: true);
+        foreach (var package in packages) package.RemoveInstalledFiles();
         foreach (var name in new[] { ReleasePackage.Cli, "active-release", Receipt, "Uninstall.exe" }) File.Delete(Path.Combine(root, name));
         var cache = Path.Combine(root, "updates");
         CodexAccessFile.CheckPath(cache);

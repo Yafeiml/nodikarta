@@ -33,9 +33,12 @@ deploy/windows/Test-EdgeRelease.ps1
 deploy/windows/Uninstall-Edge.ps1
 deploy/windows/Use-EdgeTestRelease.ps1
 deploy/windows/User-Dispatch.ps1
+deploy/windows/ValidateReleaseTrust.ps1
 deploy/windows/tests/DesktopInstall.ps1
+deploy/windows/tests/DevelopmentMigration.ps1
 deploy/windows/tests/DispatchMigration.ps1
 deploy/windows/tests/Isolated-StatePaths.ps1
+deploy/windows/tests/ReleaseTrust.ps1
 deploy/windows/tests/StableAgentLaunch.ps1
 deploy/windows/tests/TestReleaseHandoff.ps1
 docs/design/brand/README.md
@@ -234,6 +237,7 @@ tests/EdgeWindowFrame.cs
 tests/GlobalCodexAccessChecks.cs
 tests/HarnessAccessChecks.cs
 tests/HarnessDisconnectChecks.cs
+tests/InstalledReleaseHistory.cs
 tests/McpListenerChecks.cs
 tests/OfflineDraftSourceChecks.cs
 tests/PairedStateMigrationChecks.cs

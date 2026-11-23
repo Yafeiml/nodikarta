@@ -18,7 +18,7 @@ if (!(Test-Path -LiteralPath $startup) -or $existing.TargetPath -ne $exe -or $ex
 }
 $original = [IO.File]::ReadAllBytes($startup)
 $work = [IO.Directory]::CreateTempSubdirectory('nodicarta-preferences-qa-')
-$state = [IO.Directory]::CreateDirectory((Join-Path $work.FullName 'device state 中文')).FullName
+$state = Join-Path $work.FullName 'device state 中文'
 $testProfileDirectory = [IO.Directory]::CreateDirectory((Join-Path $work.FullName 'profile')).FullName
 $autoPref = Join-Path $testProfileDirectory 'LOCALAPPDATA/Nodicarta/application-auto-update'
 $checks = [Collections.Generic.List[string]]::new()
@@ -26,7 +26,8 @@ function Pass($message) { $checks.Add($message); Write-Host "PASS $message" }
 function Until($name,[scriptblock]$condition) {
     $end = [datetime]::UtcNow.AddSeconds(15)
     do { $value=& $condition; if ($value) { return $value }; Start-Sleep -Milliseconds 100 } while ([datetime]::UtcNow -lt $end)
-    throw "Timed out: $name"
+    if ($app -and $app.HasExited) { throw "Timed out: $name (candidate exited with code $($app.ExitCode))" }
+    throw "Timed out: $name (candidate $($app.Id), window '$($app.MainWindowTitle)')"
 }
 function Launch-Edge([string]$target, [string]$arguments) {
     if ($target -ne $exe) { throw 'Unexpected candidate executable.' }
@@ -47,6 +48,7 @@ function Window($id) {
     $pidCondition = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty,$app.Id)
     foreach ($win in [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,$pidCondition)) {
         if ($win.Current.AutomationId -eq $id -and !$win.Current.IsOffscreen) { return $win }
+        if ($nested = Control $win $id) { if (!$nested.Current.IsOffscreen) { return $nested } }
     }
 }
 function Control($parent, $id) {
@@ -71,14 +73,18 @@ function Wake-Resident {
 $app=$null
 try {
     if (@(Get-Process ProjectHub.Edge.Desktop -ErrorAction SilentlyContinue).Count) { throw 'Release the real desktop before this isolated test.' }
-    [IO.File]::WriteAllText((Join-Path $state 'ui-language.txt'),'zh-CN')
     $app=Launch-Edge $exe "--state ""$state"""
     $main=Until 'overview' { Window 'EdgeMainWindow' }
+    $null=Until 'unpaired setup' { Control $main 'PairButton' }
     Push $main 'AppPreferencesButton'
     $settings=Until 'settings' { Window 'AppPreferencesWindow' }
-    if ((Control $settings 'StartOnLogin').Current.Name -ne '登录时启动 Edge' -or
+    $firstLabel=(Control $settings 'StartOnLogin').Current.Name
+    $firstLanguage=if($firstLabel -eq '登录时启动 Edge'){'zh-CN'}else{'en'}
+    $otherLanguage=if($firstLanguage -eq 'zh-CN'){'en'}else{'zh-CN'}
+    $otherLabel=if($otherLanguage -eq 'en'){'Start Edge when I sign in'}else{'登录时启动 Edge'}
+    if ($firstLabel -notin '登录时启动 Edge','Start Edge when I sign in' -or
         (Value $settings 'StartOnLogin') -ne 'On' -or (Value $settings 'AutomaticAppUpdates') -ne 'On') { throw 'First install preferences differ.' }
-    if ($EvidenceDirectory) { Save-WindowsTestWindow $settings $EvidenceDirectory 'preferences-zh' }
+    if ($EvidenceDirectory) { Save-WindowsTestWindow $settings $EvidenceDirectory "preferences-$firstLanguage" }
     Toggle $settings 'StartOnLogin'
     $null=Until 'disabled login' { !(Test-Path -LiteralPath $startup) }
     Toggle $settings 'AutomaticAppUpdates'
@@ -88,21 +94,21 @@ try {
     $app.Dispose()
     $app=$null
     Pass 'Disabling login removed the user Startup entry; app updates were switched off independently.'
-    [IO.File]::WriteAllText((Join-Path $state 'ui-language.txt'),'en')
+    [IO.File]::WriteAllText((Join-Path $state 'ui-language.txt'),$otherLanguage)
     $app=Launch-Edge $exe "--state ""$state"""
     $main=Until 'restarted overview' { Window 'EdgeMainWindow' }
     Push $main 'AppPreferencesButton'
-    $settings=Until 'English settings' { Window 'AppPreferencesWindow' }
-    if ((Control $settings 'StartOnLogin').Current.Name -ne 'Start Edge when I sign in' -or
+    $settings=Until 'reopened settings' { Window 'AppPreferencesWindow' }
+    if ((Control $settings 'StartOnLogin').Current.Name -ne $otherLabel -or
         (Value $settings 'StartOnLogin') -ne 'Off' -or (Value $settings 'AutomaticAppUpdates') -ne 'Off') { throw 'Restart did not retain both choices.' }
-    if ($EvidenceDirectory) { Save-WindowsTestWindow $settings $EvidenceDirectory 'preferences-en' }
+    if ($EvidenceDirectory) { Save-WindowsTestWindow $settings $EvidenceDirectory "preferences-$otherLanguage" }
     Toggle $settings 'AutomaticAppUpdates'
     $null=Until 'saved update opt-in' { [IO.File]::ReadAllText($autoPref) -ceq 'true' }
     Toggle $settings 'StartOnLogin'
     $null=Until 'registered login' { Test-Path -LiteralPath $startup }
     $link=$shell.CreateShortcut($startup)
     if ($link.Arguments -ne "--background --state ""$state""" -or $link.TargetPath -ne $exe) { throw 'Re-enabling did not register the current state and executable.' }
-    Pass 'Settings in English restored both choices; enabling login saved the custom state path.'
+    Pass 'Reopening in the other language retained both choices; enabling login saved the custom state path.'
     Push $settings 'CloseAppPreferences'
     Stop-EdgeTestDesktop $app
     $app.Dispose()
@@ -114,7 +120,7 @@ try {
     $null=Wake-Resident
     $residents=@(Get-Process ProjectHub.Edge.Desktop | Where-Object Path -eq $exe)
     if ($residents.Count -ne 1 -or $residents[0].Id -ne $originalPid) { throw 'A second login instance was created.' }
-    Pass 'The actual registered command launched silently. A foreground launch opened the same process.'
+    Pass 'The registered command launched the unpaired device silently. A foreground launch opened the same process.'
     if ($EvidenceDirectory) {
         $null = [IO.Directory]::CreateDirectory($EvidenceDirectory)
         [ordered]@{version=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion;time=[DateTimeOffset]::Now.ToString('o');
@@ -122,7 +128,9 @@ try {
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'preferences.json')
     }
 } finally {
-    if($app){ if(!$app.HasExited){ Stop-EdgeTestDesktop $app }; $app.Dispose() }
+    if($app){ if(!$app.HasExited -and $app.Path -eq $exe){
+            try { Stop-EdgeTestDesktop $app } catch { if(!$app.HasExited){$app.Kill();$app.WaitForExit()} }
+        }; $app.Dispose() }
     [IO.File]::WriteAllBytes($startup,$original)
     if ($work.Parent.FullName -eq [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetTempPath()) -and $work.Name.StartsWith('nodicarta-preferences-qa-')) {
         Remove-Item -LiteralPath $work.FullName -Recurse -Force

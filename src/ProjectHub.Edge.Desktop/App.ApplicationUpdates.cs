@@ -90,13 +90,14 @@ public partial class App
         updateOperation = operation;
         try
         {
-            if (pendingRelease == null)
+            if (pendingRelease == null || DateTimeOffset.UtcNow >= nextUpdateCheck)
             {
                 updatePhase = UpdatePhase.Checking;
                 var release = await updates.CheckAsync(operation.Token, automatic: true);
                 operation.Token.ThrowIfCancellationRequested();
                 pendingRelease = release;
-                nextUpdateCheck = DateTimeOffset.UtcNow.AddHours(12);
+                // Recheck a release that was deferred while the window remained open.
+                nextUpdateCheck = DateTimeOffset.UtcNow + (release == null ? TimeSpan.FromHours(12) : TimeSpan.FromMinutes(10));
                 updatePhase = release == null ? UpdatePhase.Current : UpdatePhase.Available;
             }
             if (pendingRelease == null || window?.IsVisible == true || PendingHarnessBatch is { IsCompleted: false }) return;

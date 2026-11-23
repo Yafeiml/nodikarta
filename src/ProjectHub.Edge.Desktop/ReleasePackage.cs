@@ -31,7 +31,7 @@ internal sealed class ReleasePackage
             if (file.Split('/').Any(p => p is "" or "." or ".." || p.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) ||
                 !files.TryAdd(file, line[..64])) throw new InvalidDataException("Invalid package file name.");
         }
-        if (!files.ContainsKey(Desktop) || !files.ContainsKey(Cli) || !files.ContainsKey(Launcher))
+        if (!files.ContainsKey(Desktop) || !files.ContainsKey(Cli))
             throw new InvalidDataException("The Edge package is incomplete.");
     }
 
@@ -42,7 +42,24 @@ internal sealed class ReleasePackage
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
-    internal bool MatchesLauncher(string hash) => string.Equals(files[Launcher], hash, StringComparison.OrdinalIgnoreCase);
+    internal bool MatchesLauncher(string hash) => files.TryGetValue(Launcher, out var expected) &&
+        string.Equals(expected, hash, StringComparison.OrdinalIgnoreCase);
+
+    internal static IEnumerable<ReleasePackage> Installed(string root)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(root))
+        {
+            if (!IsId(Path.GetFileName(directory))) continue;
+            ReleasePackage package;
+            try { package = new ReleasePackage(directory, validateId: true); }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                // A hexadecimal directory name alone does not establish ownership for uninstall.
+                continue;
+            }
+            yield return package;
+        }
+    }
 
     internal void Verify()
     {
@@ -74,8 +91,11 @@ internal sealed class ReleasePackage
 
     internal ReleasePackage InstallInto(string root)
     {
+        // Older installed releases predate the stable MCP launcher. Only new distributions must contain it.
+        if (!files.ContainsKey(Launcher)) throw new InvalidDataException("Missing the MCP launcher in the new Edge package.");
         var destination = Path.Combine(root, Id);
-        if (!Directory.Exists(destination))
+        var existing = Directory.Exists(destination) ? new ReleasePackage(destination, true) : null;
+        if (existing == null || !Directory.Exists(Path.Combine(destination, "bin")))
         {
             var stage = Directory.CreateDirectory(Path.Combine(root, Guid.NewGuid().ToString("N") + ".staging")).FullName;
             try
@@ -88,13 +108,48 @@ internal sealed class ReleasePackage
                     File.Copy(Path.Combine(DirectoryPath, "bin", name), path);
                 }
                 new ReleasePackage(stage, false).Verify();
-                Directory.Move(stage, destination);
+                if (existing == null) Directory.Move(stage, destination);
+                else Directory.Move(Path.Combine(stage, "bin"), Path.Combine(destination, "bin"));
             }
             finally { if (Directory.Exists(stage)) Directory.Delete(stage, recursive: true); }
         }
         var result = new ReleasePackage(destination, true);
         result.Verify();
         return result;
+    }
+
+    // Old installations may also hold user archives or local changes. Delete only intact manifest entries.
+    internal void RemoveInstalledFiles()
+    {
+        var bin = Path.Combine(DirectoryPath, "bin");
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { bin };
+        foreach (var (relative, digest) in files)
+        {
+            var path = Path.Combine(bin, relative);
+            for (var parent = Path.GetDirectoryName(path); parent != null && parent.Length > bin.Length; parent = Path.GetDirectoryName(parent))
+                dirs.Add(parent);
+            try
+            {
+                if (File.Exists(path) && string.Equals(Hash(path), digest, StringComparison.OrdinalIgnoreCase)) File.Delete(path);
+            }
+            catch (CodexAccessFile.LinkedPathException) { }
+        }
+        foreach (var path in dirs.OrderByDescending(path => path.Length))
+        {
+            try
+            {
+                CodexAccessFile.CheckPath(path);
+                if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any()) Directory.Delete(path);
+            }
+            catch (CodexAccessFile.LinkedPathException) { }
+        }
+        // Retain the validated manifest next to any user material so a later reinstall can identify its own directory.
+        var manifest = Path.Combine(DirectoryPath, "SHA256SUMS");
+        if (Directory.EnumerateFileSystemEntries(DirectoryPath).All(path => string.Equals(path, manifest, StringComparison.OrdinalIgnoreCase)))
+        {
+            File.Delete(manifest);
+            if (!Directory.EnumerateFileSystemEntries(DirectoryPath).Any()) Directory.Delete(DirectoryPath);
+        }
     }
 
     internal static void WriteAtomically(string path, byte[] bytes)

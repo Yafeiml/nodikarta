@@ -9,6 +9,7 @@ param(
     [Parameter(Mandatory,ParameterSetName='Test')][uri]$TestAssetUrl
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'ValidateReleaseTrust.ps1')
 $file = Get-Item -LiteralPath $Installer
 $expected = "Nodicarta-Edge-$Version-win-x64-setup.exe"
 $testing = $PSCmdlet.ParameterSetName -eq 'Test'
@@ -20,7 +21,9 @@ $pub = [Security.Cryptography.ECDsa]::Create()
 $signer = $null
 $handle = $null
 try {
-    $pub.ImportFromPem([IO.File]::ReadAllText((Resolve-Path (Join-Path $PSScriptRoot '../../release/edge-update-public.pem'))))
+    $officialSpki = Get-EdgePublicSpki (Join-Path $PSScriptRoot '../../release/edge-update-public.pem')
+    $read = 0
+    $pub.ImportSubjectPublicKeyInfo([Convert]::FromBase64String($officialSpki), [ref]$read)
     $official = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($pub.ExportSubjectPublicKeyInfo()))
     if ($testing) {
         if (!$TestAssetUrl.IsLoopback -or $TestAssetUrl.Scheme -ne 'http' -or $TestAssetUrl.UserInfo -or $TestAssetUrl.Fragment -or
