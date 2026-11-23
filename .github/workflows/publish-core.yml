@@ -14,7 +14,8 @@ on:
         required: true
 
 permissions:
-  contents: read
+  # GitHub limits reads of draft releases to users with push access.
+  contents: write
   packages: write
 
 concurrency:
@@ -38,7 +39,11 @@ jobs:
           [[ "$ARCHIVE_SHA" =~ ^[a-f0-9]{64}$ && "$EXPECTED_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
           archive="nodikarta-core-$VERSION-linux-amd64.tar.gz"
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/nodikarta-core:$VERSION"
-          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern "$archive"
+          release_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -ser --arg tag "v$VERSION" 'add | map(select(.tag_name == $tag)) | select(length == 1) | .[0].id')
+          asset_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases/$release_id/assets?per_page=100" |
+            jq -ser --arg name "$archive" 'add | map(select(.name == $name and .state == "uploaded")) | select(length == 1) | .[0].id')
+          gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "$archive"
           printf '%s  %s\n' "$ARCHIVE_SHA" "$archive" | sha256sum -c -
           docker load --input "$archive"
           test "$(docker image inspect "$image" --format '{{.Id}}')" = "$EXPECTED_ID"
