@@ -7,9 +7,13 @@
 
 English · [简体中文](README.zh-CN.md)
 
-I want to be able to reboot my development PC without taking customer support offline. One computer can run an AI assistant that writes code. Others can research an issue, draft release notes or answer customers. But if the reasons behind a feature live in a chat on my PC, I end up explaining them all over again. Sometimes that means going all the way back to who we're building for and what they need.
+**If ten AI agents each do their job well, will their work still add up to the product you meant to build?**
 
-That's why I built Nodicarta. It keeps a shared project record on a **Core** server that the other computers can reach. Say a developer fixes a bug that drops notes from CSV exports. The development assistant records that the fix passed testing but hasn't shipped. I can take the laptop on a trip. The assistant on the operations PC has what it needs to draft the next release notes, and the one handling support can tell a customer what to expect from the version they're using today.
+When you work with one assistant, you can explain a change of direction in one conversation. Once researchers, developers, writers and support staff each have an agent on a different machine, someone has to explain the change to all of them. Leave out the words “pilot customers only” and the engineers can ship exactly what you asked for while a beautifully written announcement promises it to everyone.
+
+I built Nodicarta so **the project could have a memory of its own**. Who are we building for? What did we promise them? What did we learn that made us change our minds? People and agents can record those decisions with the evidence and the exact files they relied on. Months later, someone working with a different model on another machine can draw on those earlier trade-offs to make a call nobody thought to spell out.
+
+Imagine building a field notebook. Its first manual said photos stayed on the device. During a field trial, surveyors asked to send *a few photos they picked* to a colleague, so the team added sharing. Now a design agent has to decide whether inviting a teammate should upload the whole album by default. The trial notes and the two decisions give the designer good reason to leave sharing up to the photographer. How long a shared photo should be kept is still an open question for the team.
 
 ## How it works
 
@@ -44,21 +48,21 @@ Open `http://127.0.0.1:8080/` on that host. Use the one-time setup code from the
 3. In Edge, select the project and choose **Add folder**. Pick the folder you'll open in your AI client.
 4. Under **AI clients**, connect Codex, then start a new chat from the bound folder. Accept the client's workspace trust or MCP reload prompt if one appears. Edge also has setup entries for Claude Code and Antigravity.
 
-### 3. Ask from a second computer
+### 3. Give a new agent a decision to make
 
-Try this in a test project. On the development PC, create `export-test.md` in the bound folder with the following sample result.
+Try this in a test project. In a chat on the development PC, ask the assistant to record the original decision.
 
-> In the stable release, CSV export drops the second line of a customer's notes. The fix passed the two-line test in the development build. It hasn't shipped yet.
+> For the first release of Field Notebook, photos stay on the device because field crews sometimes photograph private land. That's what the first manual tells users. Save the decision and its reason to Nodicarta, and tell me which entry and revision Core saved.
 
-Ask the development assistant to save the finding.
+Once Core confirms the save, give the same chat the outcome of the field trial.
 
-> Record the CSV export test result and release status in Nodicarta. Cite export-test.md and tell me which revision Core saved.
+> Surveyors in the pilot needed to send selected photos to colleagues. The team approved sharing photos the user picks and confirms. Everything else stays on the device by default. Revise the same entry with the pilot feedback as evidence and keep the original revision.
 
-Once Core confirms the save, pair a second PC with Core and grant it **read-only** access to the same project. In Edge, bind an empty local folder and connect the AI client you'll use there. Start a fresh chat from that folder with a support question.
+On a second PC with **read-only** access to the project, bind an empty folder in Edge and connect your AI client. Start a fresh chat in that folder and ask this question without copying over the two earlier prompts.
 
-> A customer says their exported notes are missing a line. What can I tell them today, and what are we basing that on?
+> I'm designing the screen for inviting a colleague to a field crew. What should happen to photos already on the device when the colleague joins? Why did the first manual say photos stayed on the device? Do we have enough evidence to set a retention period for shared photos? Cite the revisions behind your answer.
 
-The reply should distinguish the released version from the tested fix and cite `export-test.md`. You can also try this in a new chat on the first PC. The citation points to the note on the development PC. To share a downloadable test report, publish a PDF as a project attachment.
+Look for three things in the answer. Sharing stays in the user’s hands, the old manual made sense at the time, and the team has yet to decide on a retention period. You can also try this in a fresh chat from the original bound folder.
 
 ## Using it day to day
 
