@@ -26,8 +26,12 @@
     <Style Selector="Button.openCoreAction"><Setter Property="Background" Value="#4B6476"/><Setter Property="BorderBrush" Value="#4B6476"/><Setter Property="Foreground" Value="White"/></Style>
     <Style Selector="Button.openCoreAction:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#3B5366"/><Setter Property="BorderBrush" Value="#3B5366"/><Setter Property="Foreground" Value="White"/></Style>
     <Style Selector="Button.openCoreAction:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#304657"/><Setter Property="BorderBrush" Value="#304657"/><Setter Property="Foreground" Value="White"/></Style>
-    <Style Selector="Button.language"><Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="6,3"/><Setter Property="FontWeight" Value="Normal"/></Style>
-    <Style Selector="Button.language:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/></Style>
+    <Style Selector="Button.titleAction">
+      <Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="6,3"/>
+      <Setter Property="FontSize" Value="12"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.titleAction:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/></Style>
     <StyleInclude Source="/ButtonStates.axaml"/>
     <Style Selector="ScrollViewer.overview"><Setter Property="Background" Value="#F5F7FA"/></Style>
     <Style Selector="Border.card">
@@ -56,15 +60,16 @@
     <Decorator x:Name="PageHost">
       <Grid RowDefinitions="Auto,*,Auto" Background="White">
         <Border Classes="windowTitleBar" AutomationProperties.AutomationId="MainTitleBar">
-          <Grid ColumnDefinitions="*,Auto,Auto">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto">
             <Border Background="Transparent" PointerPressed="DragTitle">
               <StackPanel Classes="titleBrand">
                 <Image Source="{x:Static desktop:BrandMarks.Micro}" AutomationProperties.AutomationId="MainBrandMark"/>
                 <TextBlock Classes="titleBrandName" Text="{desktop:Tr '脉络 Edge'}" AutomationProperties.AutomationId="MainBrandName"/>
               </StackPanel>
             </Border>
-            <Button x:Name="LanguageButton" Grid.Column="1" Classes="language" Click="OpenLanguageMenu" VerticalAlignment="Center"
-                    Width="84" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+            <Button Grid.Column="1" Classes="titleAction" MinWidth="48" Content="{desktop:Tr 设置, English='Settings'}"
+                    Click="OpenAppPreferences" AutomationProperties.AutomationId="AppPreferencesButton"/>
+            <Button x:Name="LanguageButton" Grid.Column="2" Classes="titleAction" Width="84" Click="OpenLanguageMenu"
                     AutomationProperties.AutomationId="LanguageButton" AutomationProperties.Name="{desktop:Tr '语言', English='Language'}">
               <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                 <TextBlock VerticalAlignment="Center" Text="{desktop:Tr '语言', English='Language'}"/>
@@ -81,7 +86,7 @@
                 </ContextMenu>
               </Button.ContextMenu>
             </Button>
-            <Button Grid.Column="2" Classes="titleClose" Click="HideWindow"
+            <Button Grid.Column="3" Classes="titleClose" Click="HideWindow"
                     ToolTip.Tip="{desktop:Tr '收回到托盘'}" AutomationProperties.Name="{desktop:Tr '收回到托盘'}" AutomationProperties.AutomationId="HideWindow">
               <Path/>
             </Button>
@@ -233,12 +238,10 @@
         </ScrollViewer>
 
         <Border Grid.Row="2" Background="#F5F7FB" BorderBrush="#DCE4EF" BorderThickness="0,1,0,0" Padding="15,8">
-          <Grid ColumnDefinitions="14,*,Auto,Auto" ColumnSpacing="8">
+          <Grid ColumnDefinitions="14,*,Auto" ColumnSpacing="8">
             <Path Width="13" Height="10" VerticalAlignment="Center" Stroke="#52647A" StrokeThickness="1.5" Stretch="Uniform" Data="M1,1 L19,1 L19,13 L1,13 Z M2,9 L18,9"/>
             <TextBlock x:Name="Message" Grid.Column="1" Classes="hint" VerticalAlignment="Center" Text="{desktop:Tr '关闭窗口后继续在托盘运行'}" TextWrapping="Wrap" AutomationProperties.AutomationId="Message"/>
-            <Button Grid.Column="2" Classes="language" MinHeight="24" Padding="6,0" FontSize="12" VerticalAlignment="Center"
-                    Content="{desktop:Tr 设置, English='Settings'}" Click="OpenAppPreferences" AutomationProperties.AutomationId="AppPreferencesButton"/>
-            <TextBlock x:Name="DesktopVersion" Grid.Column="3" Classes="hint" VerticalAlignment="Center" AutomationProperties.AutomationId="DesktopVersion"/>
+            <TextBlock x:Name="DesktopVersion" Grid.Column="2" Classes="hint" VerticalAlignment="Center" AutomationProperties.AutomationId="DesktopVersion"/>
           </Grid>
         </Border>
       </Grid>

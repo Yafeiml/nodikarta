@@ -4,7 +4,7 @@
 
 Download `Nodicarta-Edge-1.0.0-win-x64-setup.exe` from the project's GitHub Releases and run it under your Windows account. The setup includes the runtime and defaults to `%LOCALAPPDATA%\Programs\Nodicarta\Edge`. Open **Nodicarta Edge** from Start.
 
-Open **Settings** in the window footer to manage sign-in startup and automatic Edge updates. Sign-in startup is enabled on a new installation and opens only the tray icon. Click the icon to open the window. The installer preserves your selection across upgrades.
+Open **Settings** to the left of **Language** in the title bar to manage sign-in startup and automatic Edge updates. Sign-in startup is enabled on a new installation and opens only the tray icon. Click the icon to open the window. The installer preserves your selection across upgrades.
 
 The release installation checks the stable channel automatically. When a newer release is available, close to the tray to allow Edge to verify the publisher's signature and install the update. Shared Skills have a separate update preference on the Skills tab. To migrate from a higher-numbered development build, start the public setup and confirm the migration. To uninstall, use Windows **Installed apps**. Device data is retained.
 

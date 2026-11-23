@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linejoin="round" stroke-linecap="round">
-  <path transform="translate(2 0)" d="M7,6 H4 Q1,6 1,9 V15 Q1,18 4,18 H7"/>
-  <path transform="translate(13 0)" d="M1,6 L7,18 M7,6 L1,18"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round">
+  <g><path d="M6 11.31V6.84A4.193 4.193 0 0 1 13.47 4.22M9.6 13.39V6.46"/></g>
+  <g transform="rotate(60 12 12)"><path d="M6 11.31V6.84A4.193 4.193 0 0 1 13.47 4.22M9.6 13.39V6.46"/></g>
+  <g transform="rotate(120 12 12)"><path d="M6 11.31V6.84A4.193 4.193 0 0 1 13.47 4.22M9.6 13.39V6.46"/></g>
+  <g transform="rotate(180 12 12)"><path d="M6 11.31V6.84A4.193 4.193 0 0 1 13.47 4.22M9.6 13.39V6.46"/></g>
+  <g transform="rotate(240 12 12)"><path d="M6 11.31V6.84A4.193 4.193 0 0 1 13.47 4.22M9.6 13.39V6.46"/></g>
+  <g transform="rotate(300 12 12)"><path d="M6 11.31V6.84A4.193 4.193 0 0 1 13.47 4.22M9.6 13.39V6.46"/></g>
 </svg>

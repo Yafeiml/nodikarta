@@ -1,10 +1,14 @@
-Nodicarta Edge — client labels
+脉络 Edge · Nodicarta Edge 客户端图标
 
-CX, CL, AG, CU, OC, DS and PI are original letter drawings made for
-Nodicarta Edge and distributed under the project's MIT license.
-They identify integrations with Codex, Claude Code, Google Antigravity,
-Cursor, OpenCode, DeepSeek Harness and Pi, respectively.
+七个 SVG 由项目维护者使用 Gemini 绘制，取自项目提供的 svg.html《极简黑白 SVG 图标集 · Codex 线条风重绘版》。
+源文件 SHA-256 为 c40c3446b2cf11b2d56d528a036fa59160a57c5bde5fbb8ab4e335caf45e9662。
+
+codex.svg 采用默认的 knot 交织花结，描边宽度为 1.35，端点和转角均为圆形。
+claude.svg、antigravity.svg、cursor.svg、opencode.svg、deepseek.svg、pi.svg
+使用源文件中对应客户端的填充图形。所有 SVG 的 viewBox 均为 0 0 24 24，颜色采用 currentColor。
+
+产品名称和商标归各自权利人所有。
+
+These seven SVGs were drawn with Gemini at the project maintainer's direction
+and supplied in svg.html to identify the corresponding client integrations.
 Product names and trademarks belong to their respective owners.
-
-这七种字母图形由脉络项目绘制，随项目采用 MIT 许可分发。
-第三方产品名称和商标归相应权利人所有。

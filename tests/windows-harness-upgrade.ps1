@@ -15,8 +15,38 @@ function Stop-FixtureWindow {
         $app.Dispose()
     }
 }
+function Check-HeaderSettings($main,[string]$page,[string]$language) {
+    $settingsId = 'AppPreferencesButton'
+    $idProperty = [Windows.Automation.AutomationElement]::AutomationIdProperty
+    $tree = [Windows.Automation.TreeScope]::Descendants
+    $buttons = $main.FindAll($tree,[Windows.Automation.PropertyCondition]::new($idProperty,$settingsId))
+    $settings = ById $main $settingsId
+    $languageButton = ById $main 'LanguageButton'
+    if ($buttons.Count -ne 1 -or !$settings -or !$languageButton -or !$settings.Current.IsEnabled) {
+        throw "$page/$language 应只有一个可用设置入口，且位于标题栏。"
+    }
+    $label = if ($language -eq 'en') { 'Settings' } else { '设置' }
+    $button = $settings.Current.BoundingRectangle
+    $lang = $languageButton.Current.BoundingRectangle
+    if ($settings.Current.Name -cne $label -or $button.IsEmpty -or $lang.IsEmpty -or $button.Right -gt $lang.Left+1 -or
+        [Math]::Abs(($button.Top+$button.Height/2)-($lang.Top+$lang.Height/2)) -gt 1) {
+        throw "$page/$language 的设置按钮应位于语言左侧、文字正确且垂直居中。"
+    }
+    Click $main $settingsId
+    $dialog = Wait-Ui '设备设置弹窗' {
+        $byProcess = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ProcessIdProperty,$app.Id)
+        foreach ($win in [Windows.Automation.AutomationElement]::RootElement.FindAll([Windows.Automation.TreeScope]::Children,$byProcess)) {
+            if (ById $win 'CloseAppPreferences') { return $win }
+        }
+    }
+    if (!(ById $dialog 'StartOnLogin') -or !(ById $dialog 'AutomaticAppUpdates')) { throw '设置入口未打开设备偏好。' }
+    Click $dialog 'CloseAppPreferences'
+    $null = Wait-Ui '关闭设置弹窗后返回原页面' { $settings.Current.IsEnabled -and !(ById $main 'CloseAppPreferences') }
+    Pass "$page/$language 的唯一设置入口位于标题栏语言按钮左侧，能打开并关闭设备设置。"
+}
 function Open-FixtureAccess([string]$language) {
     $main = Wait-Ui '设备概览' { MainWindow }
+    if ($language) { Check-HeaderSettings $main 'overview' $language }
     if ($language -and $ScreenshotDirectory) { Save-WindowsTestWindow $main $ScreenshotDirectory "overview-$language" }
     Click $main 'GlobalAccessButton'
     Wait-Ui '智能体接入' { AccessWindow }
@@ -41,6 +71,7 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
     $bmp = [Drawing.Bitmap]::FromFile($imagePath)
     try {
         $previousY = $null
+        $silhouettes = [Collections.Generic.HashSet[string]]::new()
         foreach ($id in 'codex','claude','antigravity','cursor','opencode','deepseek','pi') {
             $icon = (ById $view "HarnessIcon_$id").Current.BoundingRectangle
             $copy = (ById $view "HarnessCopy_$id").Current.BoundingRectangle
@@ -49,6 +80,13 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
             if ([Math]::Abs($icon.Width-24*$scale) -gt 1 -or [Math]::Abs($icon.Height-24*$scale) -gt 1) {
                 throw "$id 品牌图标的显示尺寸错误。"
             }
+            $ink = foreach ($iy in 0..([int]$icon.Height-1)) {
+                foreach ($ix in 0..([int]$icon.Width-1)) {
+                    $color = $bmp.GetPixel([int]($icon.Left-$frame.Left)+$ix, [int]($icon.Top-$frame.Top)+$iy)
+                    if ([Math]::Min($color.R,[Math]::Min($color.G,$color.B)) -lt 160) { $iy*[int]$icon.Width+$ix }
+                }
+            }
+            if (@($ink).Count -lt 12*$scale*$scale -or !$silhouettes.Add(($ink -join ','))) { throw "$id 图标没有绘制，或错误地复用了另一行的图形。" }
             # Sample both sides of the logo, then the empty rounded corner and the adjacent card.
             foreach ($offset in -15,15) {
                 if ($bmp.GetPixel([int]($x+$offset*$scale),[int]$y).Name -ne 'fffafafa') { throw "$id 图标浅灰底板未正确显示。" }
@@ -280,4 +318,13 @@ try {
     Check-RowLayout $access 'en'
     if ($ScreenshotDirectory) { Pass '中英文在默认和窄窗口共四次实测，七行均为 52 DIP，24 DIP 图标居于浅灰圆角底板内。六条 1 DIP 中性灰分隔线贯穿列表，主操作和复制列对齐，间距 8 DIP。' }
     Pass '断开确认默认焦点为取消。取消保留原配置；确认只断开 Codex，重启后仍然断开，其他六项与五项通用 Skills 保留。'
+    Stop-FixtureWindow
+    $app = $null
+    $unpaired = Join-Path $root 'unpaired-settings'
+    $start.ArgumentList.Clear()
+    foreach ($arg in '--state',$unpaired) { $start.ArgumentList.Add($arg) }
+    $app = [Diagnostics.Process]::Start($start)
+    $main = Wait-Ui '隔离的配对页' { $w=MainWindow; if ($w -and (ById $w 'PairButton')) { $w } }
+    $pairingLanguage = if ((ById $main 'LanguageButton').Current.Name -eq 'Language') { 'en' } else { 'zh-CN' }
+    Check-HeaderSettings $main 'pairing' $pairingLanguage
 } finally { Stop-FixtureWindow }
