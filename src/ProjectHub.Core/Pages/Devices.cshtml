@@ -1,0 +1,82 @@
+@page "/devices"
+@model DevicesModel
+@{ ViewData["Title"]=T("设备", "Devices"); }
+<div class="workspace" id="device-directory">
+    <template id="issued-template"><label class="field">@T("一次性配对码", "One-time pairing code")<input id="pairing-code" readonly spellcheck="false" class="pairing-secret"></label>
+        <p class="muted">@T("有效至", "Expires") <time></time>@T("。关闭后无法再次查看此码。", ". This code can only be viewed until you close this dialog.")</p><p class="callout" data-progress role="status"></p>
+        <div class="dialog-actions"><button type="button" class="secondary" data-close>@T("关闭", "Close")</button><button type="button" class="primary" data-copy-input>@T("复制配对码", "Copy pairing code")</button></div></template>
+    <header class="page-head"><h1>@T("设备", "Devices")</h1><button type="button" class="primary" data-open="add-device"><span aria-hidden="true">＋</span> @T("添加设备", "Add device")</button></header>
+    @if (Model.Error is not null){<p class="notice error" role="alert">@Model.Error</p>}
+    <nav class="tabs" aria-label="@T("设备视图", "Device views")"><a asp-page="/Devices" aria-current="@(!Model.History && Model.Security is null ? "page" : null)">@T("有效设备", "Active devices")</a><a asp-page="/Devices" asp-route-view="history" aria-current="@(Model.History ? "page" : null)">@T("历史身份", "Past identities")</a><a asp-page="/Devices" asp-route-view="security" aria-current="@(Model.Security is null ? null : "page")">@T("访问异常", "Access issues")</a></nav>
+    @if (Model.Security is not null)
+    { <partial name="_Activity" model="Model.Security"/> }
+    else
+    {
+        var list=Model.Devices.Where(d=>d.Revoked==Model.History).ToList();
+        <section class="panel" aria-label="@T("设备列表", "Device list")">
+        <div class="panel-head"><h2>@(Model.History ? T("历史身份", "Past identities") : T("已配对设备", "Paired devices"))</h2><span class="muted">@T($"{list.Count} 台", $"{list.Count} {(list.Count == 1 ? "device" : "devices")}")</span></div>
+        @if (list.Count==0){<p class="empty">@(Model.History ? T("暂无已接替或已撤销的身份。", "No identities have been replaced or revoked.") : T("还没有有效设备。添加设备并在 Edge 中完成配对后，即可在这里管理授权。", "No active devices yet. Add a device and pair it in Edge to manage its access here."))</p>}
+        else
+        {
+            <div class="table-scroll"><table class="device-table"><thead><tr><th>@T("设备", "Devices")</th><th>@T("身份状态", "Identity status")</th><th class="num">@T("授权项目", "Authorized projects")</th><th>@T("最后成功联系", "Last successful contact")</th><th class="actions">@T("操作", "Actions")</th></tr></thead><tbody>
+            @foreach (var d in list)
+            {
+                var pending=Model.Pending.FirstOrDefault(p=>p.TargetDeviceId==d.DeviceId);
+                <tr id="device-@d.DeviceId" data-device-id="@d.DeviceId"><td><a class="entity-name" asp-page="/Device" asp-route-id="@d.DeviceId">@d.Label</a><small><code>@AdminUi.Short(d.DeviceId)</code></small></td>
+                    <td><span class="status @(d.Revoked ? "quiet" : "good")">@(d.ReplacedByDeviceId.HasValue ? T("已被接替", "Replaced") : d.Revoked ? T("已撤销", "Revoked") : T("有效", "Active"))</span>@if(pending is not null){<small class="pending-state">@(pending.Claimed ? T("等待新 Edge 确认", "Awaiting confirmation from the new Edge") : T("等待领取更新码", "Awaiting update code redemption"))</small>}</td>
+                    <td class="num"><a asp-page="/Device" asp-route-id="@d.DeviceId">@(d.Revoked ? "—" : d.Grants.Count.ToString())</a></td>
+                    <td>@if(Model.Contacts.TryGetValue(d.DeviceId,out var contact)){<partial name="_Time" model="contact"/>}else{<span class="muted">@T("尚无记录", "No records yet")</span>}</td>
+                    <td class="actions">@if (!d.Revoked){<button type="button" class="secondary" data-open="update-@d.DeviceId">@(pending is null ? T("更新设备", "Update device") : T("查看接替", "View replacement"))</button>}
+                        <a class="button-link" asp-page="/Device" asp-route-id="@d.DeviceId">@T("详情", "Details")</a></td></tr>
+            }
+            </tbody></table></div>
+        }
+        </section>
+        @if (!Model.History && Model.Pending.Any(p=>!p.TargetDeviceId.HasValue))
+        {
+            <section class="panel"><div class="panel-head"><h2>@T("等待配对", "Pending pairings")</h2></div>
+            @foreach(var p in Model.Pending.Where(p=>!p.TargetDeviceId.HasValue))
+            { <div class="detail-row" data-pairing-id="@p.PairingId"><strong>@p.Label</strong><span class="grow muted">@T("有效至", "Expires") <partial name="_Time" model="p.ExpiresAt"/></span><button type="button" class="secondary" data-open="pending-@p.PairingId">@T("查看进度", "View progress")</button></div>
+              <dialog id="pending-@p.PairingId" aria-labelledby="pt-@p.PairingId" data-watch="@p.PairingId"><div class="dialog-head"><h2 id="pt-@p.PairingId">@T("添加", "Add") @p.Label</h2><button type="button" class="close" data-close aria-label="@T("关闭", "Close")">×</button></div><p data-progress role="status">@T("等待新 Edge 领取", "Awaiting redemption by the new Edge")</p>
+                  <form method="post" asp-page-handler="RevokePairing" data-cancel><input type="hidden" name="pairingId" value="@p.PairingId"><div class="dialog-actions"><button type="button" class="secondary" data-close>@T("关闭", "Close")</button><button class="secondary danger">@T("取消配对码", "Cancel pairing code")</button></div></form></dialog> }
+            </section>
+        }
+    }
+    <dialog id="add-device" aria-labelledby="add-title"><div class="dialog-head"><h2 id="add-title">@T("添加设备", "Add device")</h2><button type="button" class="close" data-close aria-label="@T("关闭", "Close")">×</button></div>
+        <form method="post" class="stack" asp-page-handler="Issue" data-issue><input type="hidden" name="requestId" value="@Model.RequestId">
+            <label class="field" for="device-label">@T("设备名称", "Device name")<input id="device-label" name="label" value="@Model.Label" required maxlength="120" autofocus placeholder="@T("例如：开发电脑", "e.g. Development PC")"></label>
+            @if(Model.Projects.Count>0)
+            {
+                <fieldset class="grant-options"><legend>@T("项目权限", "Project permissions")</legend><input type="search" data-filter aria-label="@T("筛选授权项目", "Filter available projects")" placeholder="@T("筛选项目", "Filter projects")"><div class="grant-picker">
+                @foreach(var p in Model.Projects){<label data-option>@p.Name<select name="grants[@p.ProjectId]"><option value="none">@T("无权限", "No access")</option><option value="readOnly">@T("只读", "Read only")</option><option value="readWrite">@T("读写", "Read and write")</option></select></label>}
+                </div></fieldset>
+            }
+            else {<p class="muted">@T("配对后可在设备详情添加项目授权。", "After pairing, grant project access on the device details page.")</p>}
+            <p class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-close>@T("取消", "Cancel")</button><button class="primary">@T("生成配对码", "Generate pairing code")</button></div>
+        </form>
+    </dialog>
+    @foreach(var d in Model.Devices.Where(d=>!d.Revoked))
+    {
+        var p=Model.Pending.FirstOrDefault(x=>x.TargetDeviceId==d.DeviceId);
+        <dialog id="update-@d.DeviceId" aria-labelledby="ut-@d.DeviceId" data-watch="@p?.PairingId">
+            <div class="dialog-head"><h2 id="ut-@d.DeviceId">@T("更新", "Update") @d.Label</h2><button type="button" class="close" data-close aria-label="@T("关闭", "Close")">×</button></div>
+            <p>@T("新 Edge 确认接替后，旧身份失效。超时或取消时，原设备继续可用。", "The old identity will become inactive once the new Edge confirms the replacement. If the code expires or is cancelled, the original device keeps its access.")</p>
+            @if(p is not null)
+            {
+                <div class="callout" data-pairing-id="@p.PairingId"><strong data-progress role="status">@(p.Claimed ? T("等待新 Edge 确认", "Awaiting confirmation from the new Edge") : T("等待新 Edge 领取", "Awaiting redemption by the new Edge"))</strong><small>@T("有效至", "Expires") <partial name="_Time" model="p.ExpiresAt"/></small></div>
+                <p class="muted">@T("重新生成会立即替换已有更新码。", "Generating a new code immediately replaces the current one.")</p>
+                <form method="post" asp-page-handler="RevokePairing" data-cancel><input type="hidden" name="pairingId" value="@p.PairingId"><button class="text-button danger">@T("取消本次接替", "Cancel replacement")</button></form>
+            }
+            <form method="post" asp-page-handler="IssueUpdate" data-issue><input type="hidden" name="deviceId" value="@d.DeviceId"><input type="hidden" name="requestId" value="@Guid.NewGuid()"><input type="hidden" name="expectedPairingId" value="@p?.PairingId"><input type="hidden" name="checkPending" value="true">
+                <p class="form-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary" data-close>@T("关闭", "Close")</button><button class="primary">@(p is null ? T("生成更新码", "Generate update code") : T("重新生成更新码", "Regenerate update code"))</button></div>
+            </form>
+        </dialog>
+    }
+    @if(Model.Issued is {} issued)
+    {
+        <dialog id="issued-code" open data-auto-open="true" data-watch="@issued.PairingId" data-issued aria-labelledby="issue-title"><div class="dialog-head"><h2 id="issue-title">@T("一次性配对码", "One-time pairing code")</h2><button class="close" data-close aria-label="@T("关闭", "Close")">×</button></div>
+            <label class="field">@T("在目标 Edge 上使用", "Enter on the target Edge")<input id="pairing-code" readonly class="pairing-secret" value="@((Model.UpdateTarget.HasValue ? "U1." : "") + issued.PairingId + "." + issued.Code)"></label>
+            <p>@T("有效至", "Expires") <partial name="_Time" model="issued.ExpiresAt"/>@T("。关闭后无法再次查看此码。", ". This code can only be viewed until you close this dialog.")</p><p data-progress role="status"></p><div class="dialog-actions"><a class="secondary" asp-page="/Devices">@T("关闭", "Close")</a><button type="button" class="primary" data-copy-input>@T("复制配对码", "Copy pairing code")</button></div>
+        </dialog>
+    }
+</div>

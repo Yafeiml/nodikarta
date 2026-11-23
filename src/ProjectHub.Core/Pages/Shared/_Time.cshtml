@@ -1,0 +1,2 @@
+@model DateTimeOffset
+<time datetime="@Model.ToString("O")" title="@Model.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss") UTC">@Model.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</time>

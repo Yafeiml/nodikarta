@@ -1,0 +1,44 @@
+@page "/login"
+@model LoginModel
+@{
+    ViewData["Title"] = T("管理员登录","Administrator sign-in");
+}
+<section class="auth-card" aria-labelledby="login-title">
+    <h1 id="login-title">@ViewData["Title"]</h1>
+    @if (TempData["Notice"] is string notice)
+    {
+        <p class="notice success" role="status">@notice</p>
+    }
+    @if (Model.Error is not null)
+    {
+        <p class="notice error" role="alert">@Model.Error</p>
+    }
+    <form method="post" class="stack">
+        <div class="field">
+            <label for="username">@T("管理员账号","Administrator username")</label>
+            <input id="username" name="username" value="@Model.Username" required maxlength="64" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="field">
+            <label for="password">@T("密码","Password")</label>
+            <input id="password" name="password" type="password" required maxlength="128" autocomplete="current-password">
+        </div>
+        <div class="field" data-login-challenge>
+            <input type="hidden" name="challengeId" value="@Model.Captcha.Id">
+            <label for="captcha">@T("验证码","Verification code")</label>
+            <div class="captcha-tools">
+                <svg class="captcha-image" width="100" height="38" viewBox="0 0 100 38" role="img" aria-label="@T("四位字母和数字验证码","Four-character verification image")" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round">@Html.Raw(Model.Captcha.Drawing)</svg>
+                <button class="text-button" type="submit" form="refresh-login-captcha">@T("换一张","New image")</button>
+            </div>
+            <input id="captcha" name="captcha" required minlength="@LoginCaptcha.Length" maxlength="@LoginCaptcha.Length" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="@T("输入图中 4 个字符，不分大小写","Enter all 4 characters, in either case")">
+        </div>
+        <button class="primary" type="submit" id="login-submit">@T("登录","Sign in")</button>
+    </form>
+    <form method="post" id="refresh-login-captcha" asp-page-handler="Refresh">
+        <input type="hidden" name="challengeId" value="@Model.Captcha.Id">
+    </form>
+    <details class="recovery">
+        <summary>@T("忘记密码？","Forgot your password?")</summary>
+        <p>@T("请部署者进入 Core 容器终端重设原账号的密码，再使用新密码登录。","The deployment administrator can reset your password from the Core container terminal.")</p>
+    </details>
+</section>
+<script defer src="~/login.js" asp-append-version="true"></script>

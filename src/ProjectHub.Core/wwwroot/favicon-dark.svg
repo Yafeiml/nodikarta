@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="脉络协同记忆小尺寸图标">
+  <defs>
+    <mask id="vein-micro-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="256" height="256">
+      <rect width="256" height="256" fill="#FFFFFF" />
+
+      
+      <g fill="none" stroke="#000000" stroke-linecap="round">
+        <path d="M 10 230 C 110 206, 146 50, 246 26" stroke-width="21" />
+        <path d="M 81.8 184.6 C 97.7 168.0, 101 102, 96 10" stroke-width="15" />
+        <path d="M 174.2 71.4 C 158.3 88.0, 155 154, 160 246" stroke-width="15" />
+      </g>
+
+      
+      <g fill="#000000">
+        <path d="M 103.5 134.5 Q 102.0 145.2, 111.0 133.5 L 102.0 147.0 Z" />
+        <path d="M 152.5 121.5 Q 154.0 110.8, 145.0 122.5 L 154.0 109.0 Z" />
+      </g>
+    </mask>
+  </defs>
+
+  <path d="M 84 20 L 172 20 C 217 20, 236 39, 236 84 L 236 172 C 236 217, 217 236, 172 236 L 84 236 C 39 236, 20 217, 20 172 L 20 84 C 20 39, 39 20, 84 20 Z" fill="#B5E5CF" mask="url(#vein-micro-mask)" />
+</svg>

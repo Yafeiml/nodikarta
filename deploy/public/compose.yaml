@@ -1,0 +1,13 @@
+services:
+  core:
+    image: ${NODICARTA_CORE_IMAGE:?Set the versioned registry image in .env}
+    restart: unless-stopped
+    ports:
+      - "${NODICARTA_BIND_ADDRESS:-127.0.0.1}:${NODICARTA_PORT:-8080}:8080"
+    environment:
+      ConnectionStrings__Core: ${NODICARTA_DATABASE:?Configure the database connection in .env}
+      ProjectHub__LocalHttp: "${NODICARTA_LOCAL_HTTP:-true}"
+      ProjectHub__PublicUrl: "${NODICARTA_PUBLIC_URL:-}"
+      ProjectHub__TrustedProxy: "${NODICARTA_TRUSTED_PROXY:-}"
+    volumes:
+      - ./data/keys:/var/lib/projecthub/keys

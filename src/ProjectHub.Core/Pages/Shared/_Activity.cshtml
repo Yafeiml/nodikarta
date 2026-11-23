@@ -1,0 +1,66 @@
+@model ActivityPanel
+@{
+    var m=Model; var security=m.View=="security";
+    var groups=new[] { ("all",T("全部活动","All activity")),("important",T("重要活动","Important activity")),("reads",T("读取与下载","Reads and downloads")),("errors",T("失败","Failures")) };
+}
+<section class="panel activity">
+    <div class="panel-head"><h2>@(security?T("访问异常","Access failures"):T("活动记录","Activity log"))</h2><small>@T("读取与失败明细保留 30 天 · 来源 IP 保留 7 天","Read and failure details retained for 30 days · Source IP retained for 7 days")</small></div>
+    <form method="get" class="filter-bar">
+        @if(m.ProjectId.HasValue){<input type="hidden" name="tab" value="activity">}
+        @if(security){<input type="hidden" name="view" value="security">}else{
+            <label>@T("范围","Scope")<select name="view">@foreach(var g in groups){<option value="@g.Item1" selected="@(g.Item1==m.View)">@g.Item2</option>}</select></label>}
+        @if(m.ProjectId.HasValue){<label>@T("设备","Device")<select name="device"><option value="">@T("全部设备","All devices")</option>@foreach(var d in m.FilterDevices){<option value="@d.DeviceId" selected="@(m.DeviceId==d.DeviceId)">@d.Label · @AdminUi.Short(d.DeviceId)</option>}</select></label>}
+        <partial name="_ActivityFilter" model="m.Clients"/>
+        <partial name="_ActivityFilter" model="m.Actions"/>
+        <partial name="_ActivityFilter" model="m.Results"/>
+        <label>@T("起始日期（UTC）","Start date (UTC)")<input type="date" name="since" value="@m.Since" /></label>
+        <label>@T("结束日期（UTC）","End date (UTC)")<input type="date" name="until" value="@m.Until" /></label>
+        <div class="filter-buttons"><button type="submit" class="secondary">@T("筛选","Apply")</button>
+        @if (m.Clients.Selected.Length+m.Actions.Selected.Length+m.Results.Selected.Length>0 || m.Since!=null || m.Until!=null || m.Before!=null || m.ProjectId.HasValue && m.DeviceId.HasValue || m.View is not ("all" or "security"))
+        {<a href="@(m.ProjectId.HasValue?"?tab=activity":security?"?view=security":Context.Request.PathBase.Add(Context.Request.Path).Value)" class="text-button">@T("清除筛选","Clear filters")</a>}
+        </div>
+    </form>
+    @if(m.Coverage.MissedCount>0){<p class="notice error" role="status">@string.Format(T("活动采集曾中断，缺少 {0} 条记录。","Collection was interrupted. {0} records are missing."), m.Coverage.MissedCount)@if(m.Coverage.FirstMissedAt is DateTimeOffset first){<partial name="_Time" model="first"/>}@if(m.Coverage.LastMissedAt is DateTimeOffset last){<span> @T("至","to") </span><partial name="_Time" model="last"/>}</p>}
+    @if(m.Rows.Count==0){<p class="empty">@T("当前范围内暂无记录。","No activity matches these filters.")</p>}
+    else
+    {
+        <div class="table-scroll"><table class="activity-table"><thead><tr><th>@T("时间","Time")</th><th>@T("设备 / 操作者","Device / actor")</th><th>@T("客户端","Client")</th><th>@T("动作","Action")</th><th>@T("结果","Result")</th><th class="actions">@T("明细","Details")</th></tr></thead><tbody>
+        @foreach(var e in m.Rows)
+        {
+            var success=e.Result=="success";
+            var tab=e.Action.StartsWith("knowledge.")?"knowledge":e.Action.StartsWith("asset.")?"assets":null;
+            var read=e.Action.Contains("search")||e.Action.Contains("history")||e.Action.Contains("download")||e.Action.EndsWith(".get")||e.Action.EndsWith(".list")||e.Action.EndsWith(".snapshot");
+            var report=AdminUi.ClientName(e.Client??(e.Entry=="admin"?"Core 后台":e.OccurredAt<m.Coverage.StartedAt?"未采集":"未上报"));
+            var resultText=success?(e.MatchCount is int count?string.Format(T("{0} 条命中",count==1?"{0} match":"{0} matches"),count):T("成功","Success")):$"{T("失败","Failed")} · {AdminUi.Reason(e.Result)}";
+            var summary=$"{e.OccurredAt:u} · {AdminUi.Action(e.Action)} ({e.Action}) · {resultText} · {e.DeviceLabel??e.ActorLabel??T("未知来源","Unknown source")} · {report} · {T("对象","Object")} {e.ObjectId?.ToString()??"—"} v{e.ObjectVersion?.ToString()??"—"} · {T("请求","Request")} {e.RequestId?.ToString()??e.TraceId??"—"}";
+            <tr data-activity-id="@e.Id" data-group="@(read ? System.Text.Json.JsonSerializer.Serialize(new {e.Action,e.Result,e.DeviceId,e.ActorId,e.ProjectId,e.Client,e.ClientVersion,e.Entry,e.Ip,e.ObjectId,e.ObjectVersion,e.MatchCount,e.IsReplay}) : null)" data-timestamp="@e.OccurredAt.ToUnixTimeMilliseconds()">
+                <td><partial name="_Time" model="e.OccurredAt"/></td><td>
+                    @if(e.DeviceId is Guid dev){<a asp-page="/Device" asp-route-id="@dev">@(e.DeviceLabel??AdminUi.Short(dev))</a>@if(e.ReplacedByDeviceId.HasValue){<small>@T("现已被接替","Replaced")</small>}}
+                    else {<span>@(e.ActorLabel??T("未识别","Unknown"))</span>}
+                    @if(e.DeviceId.HasValue && e.ActorId.HasValue && e.ActorId!=e.DeviceId){<small>@e.ActorLabel</small>}
+                </td><td>@report</td><td><strong>@AdminUi.Action(e.Action)</strong><small class="mobile-only"><partial name="_Time" model="e.OccurredAt"/></small>@if(e.IsReplay){<small>@T("离线续传","Offline sync")</small>}</td><td><span class="status @(success?"good":"bad")">@resultText</span></td>
+                <td class="actions"><button type="button" class="text-button" data-disclose="activity-@e.Id" aria-controls="activity-@e.Id" aria-expanded="false">@T("查看","View")</button></td>
+            </tr>
+            <tr id="activity-@e.Id" class="activity-detail" hidden><td colspan="6"><dl class="facts">
+                <dt>@T("动作代码","Action code")</dt><dd><code>@e.Action</code></dd>
+                @if(e.Client is null){<dt>@T("客户端来源","Client source")</dt><dd>@report</dd>}
+                else {<dt>@T("原始客户端名称","Reported client name")</dt><dd><code>@e.Client</code></dd>}
+                @if(e.ClientVersion is not null){<dt>@T("客户端版本","Client version")</dt><dd><code>@e.ClientVersion</code></dd>}
+                <dt>@T("调用入口","Entry point")</dt><dd>@AdminUi.Entry(e.Entry)</dd><dt>@T("Core 所见来源 IP","Source IP seen by Core")</dt><dd><code>@(e.Ip??T("未采集或已清除","Not collected or expired"))</code></dd>
+                @if(e.DeviceId is Guid originDevice){<dt>@T("设备身份","Device identity")</dt><dd><a asp-page="/Device" asp-route-id="@originDevice">@(e.DeviceLabel??AdminUi.Short(originDevice))</a>@if(e.ReplacedByDeviceId.HasValue){<span> · @T("现已被接替","Replaced")</span>}</dd>}
+                @if(e.ActorLabel is not null){<dt>@T("操作者","Actor")</dt><dd>@e.ActorLabel</dd>}
+                @if(e.ObjectId is Guid obj){<dt>@T("对象","Object")</dt><dd>@if(tab is not null && e.ProjectId is Guid projectId){<a asp-page="/Project" asp-route-id="@projectId" asp-route-tab="@tab" asp-route-objectId="@obj" asp-route-version="@e.ObjectVersion">@obj @if(e.ObjectVersion.HasValue){<span> · v@(e.ObjectVersion)</span>}</a>}else{<code>@obj</code>}</dd>}
+                @if(e.OriginAt is DateTimeOffset origin){<dt>@T("本机发起","Origin time")</dt><dd><partial name="_Time" model="origin"/></dd>}
+                <dt>@T("Core 收到","Received by Core")</dt><dd><partial name="_Time" model="e.OccurredAt"/></dd><dt>@T("请求 / 关联 ID","Request / trace ID")</dt><dd><code>@(e.RequestId?.ToString()??e.TraceId??T("未采集","Not collected"))</code></dd>
+                @if(!success){<dt>@T("结果代码","Result code")</dt><dd><code>@e.Result</code></dd>}
+                @if(!string.IsNullOrWhiteSpace(e.Detail)){<dt>@T("说明","Details")</dt><dd>@e.Detail.Replace("readOnly",T("只读","Read only")).Replace("readWrite",T("读写","Read and write")).Replace("none",T("无权限","No access"))</dd>}
+            </dl><div class="detail-links"><button class="secondary" type="button" data-copy-text="@summary">@T("复制诊断摘要","Copy diagnostics")</button>
+                @if(e.ProjectId is Guid project && !success){<a asp-page="/Project" asp-route-id="@project" asp-route-tab="grants">@T("查看项目授权","View project access")</a>}
+                @if(e.ReplacedByDeviceId is Guid successor){<a asp-page="/Device" asp-route-id="@successor">@T("查看继任身份","View replacement device")</a>}</div></td></tr>
+        }</tbody></table></div>
+    }
+    <div class="panel-foot"><small>@T("详细采集始于","Detailed collection began") <partial name="_Time" model="m.Coverage.StartedAt"/></small>
+        @if(m.Before.HasValue){<a href="@AdminUi.With(Context.Request,"before",null)">@T("返回最新","Back to latest")</a>}
+        @if(m.Next.HasValue){<a href="@AdminUi.With(Context.Request,"before",m.Next.ToString())">@T("更早的活动 →","Earlier activity →")</a>}
+    </div>
+</section>

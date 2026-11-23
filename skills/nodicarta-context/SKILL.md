@@ -1,0 +1,20 @@
+---
+name: nodicarta-context
+description: Recover earlier project work and the reasons behind decisions in nodicarta (脉络). Use for requests such as “用脉络找回上次的决定”, “继续做上次那张宣传画”, or “find the previous decision in nodicarta”.
+---
+
+Call `list_projects` to check which project this chat is connected to. With global Codex access, Edge resolves the project from the chat's working directory. If only `get_edge_status` is available, read the reason. Ask the user to bind or adjust the directory in Edge when needed.
+
+Pass the user's original request to `get_project_snapshot(task)`. For a general overview, pass an empty string. On older clients with a parameterless snapshot, use `search_project_knowledge(query)` with the original request. If there are no matches, try key nouns, synonyms, or a specific identifier. Use the returned titles, reasons, and evidence to identify the intended work. If several candidates still fit, give the distinguishing details and ask the user to choose.
+
+For an existing deliverable, find the exact output version under `deliverable` in `assetRefs`, the inputs actually used under `used`, and supporting proofs or reports under `evidence`. Identify the original choice, the reason for it, and its source. When a brief is marked `truncated` or evidence is disputed, read the original entry with `get_knowledge_history(itemId)`. If the workspace exposes asset tools, look up the pinned version using `get_asset_decisions(assetId, version)` or `get_asset(assetId, version)`.
+
+Read `validity.status` in light of the question. For a historical question, a pinned deliverable's original reason and evidence still apply even when a later decision replaced its policy. For new work, follow a `superseded` entry's `validity.currentDecision` to the governing decision. Read `get_knowledge_history` for that item ID, select the cited revision, and check its `current` status, scope and evidence against the requested work. An `unclassified` entry or a response without validity metadata needs separate evidence of current applicability.
+
+If `versionUseChecks` shows a newer input, its `searchQuery` helps locate the applicable adoption decision. On older Core versions, search by asset name and terms used in the project's guidance. `latestPublishedVersion` identifies the latest asset release. `isCurrent` identifies the current revision of a knowledge entry.
+
+When versions affect the work, cover three things in the first reply: the version used in the old deliverable and why, the latest published version, and the decision governing the version to use now. If the evidence establishes publication alone, suggest the historical input for a reproduction and say that adoption for the new work still needs confirmation. This distinction matters even if the user did not mention versions.
+
+For a device status question, identify the target and what the user wants measured. Check that target directly when reachable and authorized. If it is offline or cannot be inspected, search for its name and the requested measurement. Review matching entries and their histories, including independent item IDs. For `lastObserved` records, compare `validity.observedAt` across observations of the **same subject and the same measurement**. Use the latest actual measurement, its timestamp and its source, and state that the present condition is unknown. If evidence at that latest time conflicts, report both sources and the disagreement. If no matching measurement exists, say so. Search position, submission time, another device’s files and measurements of a different property cannot establish this result.
+
+Give the conclusions relevant to the task, their entry revisions and sources, and any outstanding checks. Distinguish design goals from observed results. This workflow requires only read access.

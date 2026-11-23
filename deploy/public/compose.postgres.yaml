@@ -1,0 +1,20 @@
+services:
+  core:
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nodicarta
+      POSTGRES_PASSWORD: ${NODICARTA_POSTGRES_PASSWORD:?Run init.sh to generate database passwords}
+      NODICARTA_DB_PASSWORD: ${NODICARTA_DB_PASSWORD:?Run init.sh to generate database passwords}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/10-nodicarta.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "nodicarta", "-d", "nodicarta"]
+      interval: 3s
+      timeout: 3s
+      retries: 30

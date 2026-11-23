@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+.env
+.env.*
+!.env.example
+!.env.sample
+*.user
+__pycache__/
+/artifacts/
+/.codex/
+/.agents/
+/ProjectHub-完整会话存档.md
+*.pfx
+*.p12
+*.key
+*.snk

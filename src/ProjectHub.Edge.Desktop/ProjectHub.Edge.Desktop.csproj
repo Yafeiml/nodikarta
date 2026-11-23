@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <Product>Nodicarta Edge</Product>
+    <AssemblyTitle>Nodicarta Edge</AssemblyTitle>
+    <Version>1.0.0</Version>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ApplicationIcon>Assets/edge.ico</ApplicationIcon>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="NodicartaReleaseLine" Value="public-v1" Condition="'$(NodicartaUpdateFeed)' != '' and '$(NodicartaUpdatePublicKey)' != ''" />
+    <AssemblyMetadata Include="NodicartaUpdateFeed" Value="$(NodicartaUpdateFeed)" />
+    <AssemblyMetadata Include="NodicartaUpdatePublicKey" Value="$(NodicartaUpdatePublicKey)" />
+    <AssemblyMetadata Include="NodicartaUpdateTestChannel" Value="$(NodicartaUpdateTestChannel)" />
+    <PackageReference Include="Avalonia.Win32" Version="11.3.13" />
+    <PackageReference Include="Avalonia.Skia" Version="11.3.13" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.13" />
+    <PackageReference Include="Svg.Controls.Avalonia" Version="11.3.9.5" />
+    <AvaloniaResource Include="Assets/edge*.ico;Assets/edge*.svg" />
+    <AvaloniaResource Include="Assets/Harnesses/*.svg" />
+    <Content Include="Assets/Harnesses/NOTICE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="../../skills/**/*" Link="skills/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <PackageReference Include="Tomlyn" Version="2.11.1" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <InternalsVisibleTo Include="ProjectHub.Edge.AccessChecks" />
+    <EmbeddedResource Include="../../deploy/windows/Stop-EdgeTestDesktop.ps1" LogicalName="Nodicarta.LegacyTrayExit.ps1" />
+    <ProjectReference Include="../ProjectHub.Edge/ProjectHub.Edge.csproj" />
+  </ItemGroup>
+</Project>

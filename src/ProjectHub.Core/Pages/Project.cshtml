@@ -1,0 +1,73 @@
+@page "/projects/{id:guid}"
+@model ProjectModel
+@{
+    var p = Model.Project; var t=Model.Tab; var assets=t=="assets"; var detailed=Model.Subject.HasValue;
+    var title=detailed?Model.Detail.GetProperty(assets?"name":"title").GetString():p.Name;
+    ViewData["Title"]=title;
+}
+<div class="workspace">
+    <nav class="crumb" aria-label="@T("面包屑", "Breadcrumb")"><a asp-page="/Projects">@T("项目", "Projects")</a> / @if(detailed){<a asp-page="/Project" asp-route-id="@p.Id" asp-route-tab="@t">@p.Name</a><span> / @(assets?T("附件详情", "Attachment details"):T("知识详情", "Knowledge details"))</span>}else{<span>@T("项目详情", "Project details")</span>}</nav>
+    <header class="page-head"><div><h1>@title</h1>
+    @if(detailed){<div class="meta"><span class="status quiet">@T("版本", "Version") @Model.Version</span>@if(!assets){<span class="status good">@AdminUi.Validity(Model.Detail.GetProperty("validity").GetProperty("status").GetString())</span>}
+        <span>@T("来源设备", "Source device") <a asp-page="/Device" asp-route-id="@(Model.Detail.GetProperty("sourceDeviceId").GetGuid())">@Model.Detail.GetProperty("sourceLabel").GetString()</a>
+        @if(Model.Detail.GetProperty("sourceReplaced").GetBoolean()){<span> @T("· 现已被接替", "· Since replaced")</span>}</span>
+        <partial name="_Time" model="@(Model.Detail.GetProperty("createdAt").GetDateTimeOffset())"/></div>}
+    else{<div class="meta"><code id="project-id">@p.Id</code><button type="button" class="text-button" data-copy="#project-id">@T("复制 ID", "Copy ID")</button></div>}</div>
+    @if(detailed && assets){<a class="primary" asp-page-handler="Download" asp-route-id="@p.Id" asp-route-assetId="@Model.Subject" asp-route-version="@Model.Version">@T("下载原件", "Download original")</a>}</header>
+    <nav class="tabs" aria-label="@T("项目详情", "Project details")"><a asp-route-id="@p.Id" asp-route-tab="knowledge" aria-current="@(t=="knowledge"?"page":null)">@T("知识", "Knowledge") <span>@p.KnowledgeCount</span></a>
+        <a asp-route-id="@p.Id" asp-route-tab="assets" aria-current="@(assets?"page":null)">@T("附件", "Attachments") <span>@p.AssetCount</span></a>
+        <a asp-route-id="@p.Id" asp-route-tab="activity" aria-current="@(t=="activity"?"page":null)">@T("活动记录","Activity log")</a>
+        <a asp-route-id="@p.Id" asp-route-tab="grants" aria-current="@(t=="grants"?"page":null)">@T("授权设备", "Authorized devices") <span>@p.DeviceCount</span></a></nav>
+    @if(t=="activity"){<partial name="_Activity" model="Model.Activity"/>}
+    else if(t=="grants")
+    {
+        var active=Model.Devices.Where(d=>!d.Revoked && d.Grants.Any(g=>g.ProjectId==p.Id)).ToList();
+        var available=Model.Devices.Where(d=>!d.Revoked && d.Grants.All(g=>g.ProjectId!=p.Id)).ToList();
+        <section class="panel" id="grants"><div class="panel-head"><h2>@T("授权设备", "Authorized devices")</h2>@if(available.Count>0){<button type="button" class="secondary" data-open="grant-device">@T("授权设备", "Grant device access")</button>}</div>
+            @if(active.Count==0){<p class="empty">@T("还没有设备获得这个项目的权限。", "No devices have access to this project yet.")</p>}
+            @foreach(var d in active){var row=new GrantRow(d,new ProjectEntry(p.Id,p.Name,0),false);<partial name="_GrantRow" model="row"/>}
+        </section>
+        <dialog id="grant-device" aria-labelledby="grant-title"><div class="dialog-head"><h2 id="grant-title">@T("授权设备", "Grant device access")</h2><button class="close" type="button" data-close aria-label="@T("关闭", "Close")">×</button></div>
+            @foreach(var d in available){var row=new GrantRow(d,new ProjectEntry(p.Id,p.Name,0),false);<partial name="_GrantRow" model="row"/>}
+            <div class="dialog-actions"><button class="secondary" type="button" data-close>@T("关闭", "Close")</button></div></dialog>
+    }
+    else
+    {
+        @if(detailed)
+        {
+            var row=Model.Detail;
+            <section class="panel resource-detail">
+                @if(assets)
+                { <h2>@T("文件信息", "File information")</h2><dl class="facts"><dt>@T("原始文件", "Original file")</dt><dd>@row.GetProperty("fileName").GetString()</dd><dt>@T("文件格式", "File format")</dt><dd>@row.GetProperty("contentType").GetString()</dd><dt>@T("文件大小", "File size")</dt><dd>@AdminUi.Size(row.GetProperty("size").GetInt64())</dd><dt>SHA-256</dt><dd><code>@row.GetProperty("sha256").GetString()</code></dd>
+                    @if(!string.IsNullOrEmpty(row.GetProperty("purpose").GetString())){<dt>@T("用途", "Purpose")</dt><dd>@row.GetProperty("purpose").GetString()</dd>}</dl> }
+                else
+                { <h2>@T("知识正文", "Entry content")</h2><p class="prose">@row.GetProperty("body").GetString()</p><h3>@T("依据", "Evidence")</h3><p class="prose">@row.GetProperty("evidence").GetString()</p>
+                    var validity=row.GetProperty("validity");
+                    <dl class="facts">@if(validity.TryGetProperty("scope",out var scope) && scope.ValueKind==System.Text.Json.JsonValueKind.String){<dt>@T("适用范围", "Scope")</dt><dd>@scope.GetString()</dd>}
+                    @if(validity.TryGetProperty("subject",out var subject) && subject.ValueKind==System.Text.Json.JsonValueKind.String){<dt>@T("实测对象", "Observed subject")</dt><dd>@subject.GetString()</dd>}
+                    @if(validity.TryGetProperty("observedAt",out var obs) && obs.ValueKind==System.Text.Json.JsonValueKind.String && obs.TryGetDateTimeOffset(out var observed)){<dt>@T("实测时间", "Observed at")</dt><dd><partial name="_Time" model="observed"/></dd>}</dl>
+                    @if(validity.TryGetProperty("currentDecision",out var current) && current.ValueKind==System.Text.Json.JsonValueKind.Object
+                        && (current.GetProperty("itemId").GetGuid()!=Model.Subject || current.GetProperty("version").GetInt64()!=Model.Version))
+                    {<a asp-route-id="@p.Id" asp-route-tab="knowledge" asp-route-objectId="@current.GetProperty("itemId").GetGuid()" asp-route-version="@current.GetProperty("version").GetInt64()">@T("查看现行决定 ·", "View current decision ·") @current.GetProperty("title").GetString()</a>}
+                }
+            </section>
+            <section class="panel"><div class="panel-head"><h2>@(assets?T("引用此版本的知识", "Knowledge referencing this version"):T("引用附件", "Referenced attachments"))</h2></div>
+                @foreach(var link in Model.References){<div class="detail-row"><span class="status quiet">@AdminUi.Role(link.Role)</span><div class="grow"><a asp-route-id="@p.Id" asp-route-tab="@(assets?"knowledge":"assets")" asp-route-objectId="@link.Id" asp-route-version="@link.Version">@link.Name · v@(link.Version)</a>@if(link.Locator is not null){<small>@link.Locator</small>}</div></div>}
+                @if(Model.References.Count==0){<p class="empty">@T("暂无已记录的版本引用。", "No version references recorded.")</p>}
+            </section>
+        }
+        <section class="panel"><div class="panel-head"><div><h2>@(detailed?T("版本历史", "Version history"):assets?T("附件库", "Attachments"):T("知识条目", "Knowledge entries"))</h2>
+            @if(!detailed){<small>@(assets ? T($"{p.AssetVersions} 个版本 · 原件合计 {AdminUi.Size(p.AssetBytes)}", $"{p.AssetVersions} versions · {AdminUi.Size(p.AssetBytes)} in original files") : T($"{p.RevisionCount} 次修订", $"{p.RevisionCount} revisions"))</small>}</div>
+            @if(!detailed){<form method="get" class="search"><input type="hidden" name="tab" value="@t"><input type="search" name="q" value="@Model.Search" aria-label="@T("搜索资料名称", "Search content names")" placeholder="@T("搜索名称", "Search by name")"><button class="secondary">@T("搜索", "Search")</button></form>}</div>
+        @if(Model.Resources.Count>0)
+        {
+            <div class="table-scroll"><table><thead><tr><th>@(detailed?T("修订", "Revision"):T("名称", "Name"))</th><th>@(assets?T("文件大小", "File size"):T("有效性", "Validity"))</th><th>@T("来源设备", "Source device")</th><th>@T("提交时间", "Submitted")</th></tr></thead><tbody>
+            @foreach(var r in Model.Resources){<tr><td><a class="entity-name" asp-route-id="@p.Id" asp-route-tab="@t" asp-route-objectId="@r.Id" asp-route-version="@r.Version">@r.Name</a><small>v@(r.Version) @r.Caption</small></td>
+                <td>@(assets?AdminUi.Size(r.Size):AdminUi.Validity(r.Validity))</td><td><a asp-page="/Device" asp-route-id="@r.DeviceId">@r.Device</a>@if(r.Replaced){<small>@T("现已被接替", "Since replaced")</small>}</td><td><partial name="_Time" model="r.Created"/></td></tr>}
+            </tbody></table></div>
+        }
+        else {<p class="empty">@(Model.Search.Length>0?T("没有符合条件的资料。", "No matching content."):assets?T("尚无共享附件。", "No shared attachments yet."):T("尚无知识条目。", "No knowledge entries yet.")) @if(Model.Search.Length>0){<a asp-route-id="@p.Id" asp-route-tab="@t">@T("清除筛选", "Clear filters")</a>}</p>}
+        @if(Model.More || Model.Number>1){<nav class="pager">@if(Model.Number>1){<a href="@AdminUi.With(Request,"number",(Model.Number-1).ToString())">@T("上一页", "Previous")</a>}<span>@T($"第 {Model.Number} 页", $"Page {Model.Number}")</span>@if(Model.More){<a href="@AdminUi.With(Request,"number",(Model.Number+1).ToString())">@T("下一页", "Next")</a>}</nav>}
+        </section>
+    }
+</div>

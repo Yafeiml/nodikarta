@@ -1,0 +1,12 @@
+@model GrantRow
+@{
+    var device=Model.Device; var p=Model.Project; var grant=device.Grants.FirstOrDefault(g=>g.ProjectId==p.ProjectId);
+    var inputId=$"grant-{device.DeviceId}-{p.ProjectId}";
+}
+<form class="grant-row" method="post" asp-page="/Devices" asp-page-handler="ChangeGrant" data-grant data-device-id="@device.DeviceId" data-project-id="@p.ProjectId">
+    <input type="hidden" name="deviceId" value="@device.DeviceId"><input type="hidden" name="projectId" value="@p.ProjectId">
+    <input type="hidden" name="expectedBindingId" value="@grant?.BindingId"><input type="hidden" name="expectedVersion" value="@(grant?.Version ?? device.GrantRevision)">
+    <div class="grant-name">@if (Model.ShowProject){<a asp-page="/Project" asp-route-id="@p.ProjectId" asp-route-tab="grants">@p.Name</a>}else{<a asp-page="/Device" asp-route-id="@device.DeviceId">@device.Label</a>}</div>
+    <select id="@inputId" aria-label="@string.Format(T("{0} 的权限", "Permissions for {0}"), Model.ShowProject ? p.Name : device.Label)" name="accessMode"><option value="none" selected="@(grant is null)">@T("无权限", "No access")</option><option value="readOnly" selected="@(grant?.AccessMode=="readOnly")">@T("只读", "Read only")</option><option value="readWrite" selected="@(grant?.AccessMode=="readWrite")">@T("读写", "Read and write")</option></select>
+    <button class="secondary">@T("保存权限", "Save permissions")</button><span class="row-result" role="status"></span>
+</form>

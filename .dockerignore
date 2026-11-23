@@ -1,0 +1,10 @@
+**
+!LICENSE
+!release/
+!release/licenses/
+!release/licenses/Npgsql-LICENSE.txt
+!src/
+!src/ProjectHub.Core/
+!src/ProjectHub.Core/**
+**/bin/
+**/obj/

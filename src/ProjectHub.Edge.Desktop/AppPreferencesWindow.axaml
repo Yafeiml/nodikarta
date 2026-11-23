@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:ProjectHub.Edge.Desktop" x:Class="ProjectHub.Edge.Desktop.AppPreferencesWindow" x:ClassModifier="internal"
+        Title="{ui:Tr 设置, English='Settings'}" Width="398" SizeToContent="Height" CanResize="False" CanMinimize="False" CanMaximize="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="White" Foreground="#172438"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="14" AutomationProperties.AutomationId="AppPreferencesWindow">
+  <StackPanel Margin="20,16" Spacing="12">
+    <StackPanel Spacing="3">
+      <CheckBox x:Name="StartOnLogin" Click="ChangeStartup" Content="{ui:Tr 登录时启动 Edge, English='Start Edge when I sign in'}"
+                AutomationProperties.AutomationId="StartOnLogin"/>
+      <TextBlock FontSize="12" Foreground="#52647A" TextWrapping="Wrap" Margin="0,2,0,0"
+                 Text="{ui:Tr 登录后在托盘中运行。, English='Runs in the system tray after sign-in.'}"/>
+      <Button x:Name="WindowsStartup" HorizontalAlignment="Left" IsVisible="False" Click="OpenStartupSettings"
+              Content="{ui:Tr 打开 Windows 启动应用设置, English='Open Windows startup settings'}" AutomationProperties.AutomationId="WindowsStartupSettings"/>
+      <TextBlock x:Name="StartupMessage" Foreground="#805025" IsVisible="False" TextWrapping="Wrap" FontSize="12" AutomationProperties.AutomationId="StartupMessage"/>
+    </StackPanel>
+    <Border Height="1" Background="#DEE6EB"/>
+    <StackPanel Spacing="3">
+      <CheckBox x:Name="ApplicationUpdates" Click="ChangeUpdates" Content="{ui:Tr 自动更新 Edge, English='Update Edge automatically'}"
+                AutomationProperties.AutomationId="AutomaticAppUpdates"/>
+      <TextBlock x:Name="UpdateStatus" FontSize="12" Foreground="#52647A" TextWrapping="Wrap" AutomationProperties.AutomationId="ApplicationUpdateStatus"/>
+    </StackPanel>
+    <Button HorizontalAlignment="Right" Padding="14,4" Click="Dismiss" IsCancel="True" Content="{ui:Tr 关闭, English='Close'}"
+            AutomationProperties.AutomationId="CloseAppPreferences"/>
+  </StackPanel>
+</Window>

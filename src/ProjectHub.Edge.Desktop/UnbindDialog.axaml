@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:desktop="using:ProjectHub.Edge.Desktop" xmlns:edge="using:ProjectHub.Edge" x:Class="ProjectHub.Edge.Desktop.UnbindDialog" x:ClassModifier="internal"
+        x:DataType="edge:LocalBinding" Title="{desktop:Tr '解除目录绑定'}" Width="390" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner" SystemDecorations="BorderOnly" CanMinimize="False" CanMaximize="False" ShowInTaskbar="False"
+        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome" ExtendClientAreaTitleBarHeightHint="0"
+        Background="White" Foreground="#172438" FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="14">
+  <Window.Styles>
+    <Style Selector="Button">
+      <Setter Property="Width" Value="88"/><Setter Property="Height" Value="32"/><Setter Property="Padding" Value="8,0"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/><Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#B6C6D7"/><Setter Property="BorderThickness" Value="1"/>
+    </Style>
+    <Style Selector="Button.confirm"><Setter Property="Background" Value="#95403D"/><Setter Property="BorderBrush" Value="#95403D"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.confirm:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#803632"/><Setter Property="BorderBrush" Value="#803632"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.confirm:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#692C29"/><Setter Property="BorderBrush" Value="#692C29"/><Setter Property="Foreground" Value="White"/></Style>
+  </Window.Styles>
+  <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="20,*,20">
+    <StackPanel Grid.Column="1" Margin="0,16" Spacing="12">
+      <TextBlock Text="{desktop:Tr '解除目录绑定？'}" FontWeight="SemiBold" FontSize="18" AutomationProperties.AutomationId="UnbindHeading"/>
+      <ScrollViewer MaxHeight="145" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="6">
+          <TextBlock Text="{desktop:Tr '项目'}" Foreground="#52647A" VerticalAlignment="Top" AutomationProperties.AutomationId="UnbindProjectLabel"/>
+          <TextBlock Grid.Column="1" Text="{Binding Name}" TextWrapping="Wrap" AutomationProperties.AutomationId="UnbindProjectName"/>
+          <TextBlock Grid.Row="1" Text="{desktop:Tr '目录'}" Foreground="#52647A" VerticalAlignment="Top" AutomationProperties.AutomationId="UnbindDirectoryLabel"/>
+          <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LocalPath}" TextWrapping="Wrap" AutomationProperties.AutomationId="UnbindPath"/>
+        </Grid>
+      </ScrollViewer>
+      <TextBlock Text="{desktop:Tr '本机文件会保留。'}" FontSize="13" Foreground="#52647A" TextWrapping="Wrap" AutomationProperties.AutomationId="UnbindNote"/>
+    </StackPanel>
+    <Border Grid.Row="1" Grid.ColumnSpan="3" Background="#F5F8FB" BorderBrush="#DCE4EF" BorderThickness="0,1,0,0"/>
+    <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,12" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button x:Name="CancelButton" Content="{desktop:Tr '取消'}" IsCancel="True" Click="Cancel" AutomationProperties.AutomationId="CancelUnbind"/>
+      <Button Classes="confirm" Content="{desktop:Tr '解除绑定'}" Click="Confirm" AutomationProperties.AutomationId="ConfirmUnbind"/>
+    </StackPanel>
+    <Border x:Name="Windows10Frame" Grid.RowSpan="2" Grid.ColumnSpan="3"/>
+  </Grid>
+</Window>

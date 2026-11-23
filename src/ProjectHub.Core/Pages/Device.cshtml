@@ -1,0 +1,25 @@
+@page "/devices/{id:guid}"
+@model DeviceModel
+@{ var d=Model.Device; ViewData["Title"]=d.Label; }
+<div class="workspace"><a class="crumb" asp-page="/Devices" asp-route-view="@(d.Revoked?"history":null)">@T("设备 / 设备详情", "Devices / Device details")</a>
+    <header class="page-head"><div><h1>@d.Label</h1><div class="meta"><span class="status @(d.Revoked?"quiet":"good")">@(d.ReplacedByDeviceId.HasValue ? T("已被接替", "Replaced") : d.Revoked ? T("已撤销", "Revoked") : T("有效身份", "Active identity"))</span><code>@d.DeviceId</code></div></div>
+        @if(!d.Revoked){<button class="secondary danger" data-open="revoke-device" type="button">@T("撤销设备", "Revoke device")</button>}</header>
+    <div class="detail-row strip"><span>@T("最后成功联系", "Last successful contact")</span>@if(Model.Contact is DateTimeOffset when){<partial name="_Time" model="when"/>}else{<span class="muted">@T("尚无记录", "No records yet")</span>}
+        @if(d.ReplacesDeviceId is Guid old){<a asp-page="/Device" asp-route-id="@old">@T("接替前的身份 ↗", "Previous identity ↗")</a>}
+        @if(d.ReplacedByDeviceId is Guid next){<a asp-page="/Device" asp-route-id="@next">@T("继任设备与实际授权 ↗", "Successor and its grants ↗")</a>}</div>
+    @if(!d.Revoked)
+    {
+        var available=Model.Projects.Where(p=>d.Grants.All(g=>g.ProjectId!=p.ProjectId)).ToList();
+        <section class="panel" id="grants"><header class="panel-head"><h2>@T("项目授权", "Project grants") <span class="text-count">@d.Grants.Count</span></h2>
+            @if(available.Count>0){<button class="secondary" type="button" data-open="grant-project">@T("授权项目", "Grant project access")</button>}</header>
+            @foreach(var g in d.Grants){var row=new GrantRow(d,new ProjectEntry(g.ProjectId,g.Name,0),true);<partial name="_GrantRow" model="row"/>}
+            @if(d.Grants.Count==0){<p class="empty">@T("此设备还没有项目权限。", "This device has no project access yet.")</p>}
+        </section>
+        <dialog id="grant-project" aria-labelledby="grant-title"><div class="dialog-head"><h2 id="grant-title">@T("授权项目", "Grant project access")</h2><button class="close" type="button" data-close aria-label="@T("关闭", "Close")">×</button></div>
+            @foreach(var p in available){var row=new GrantRow(d,p,true);<partial name="_GrantRow" model="row"/>}
+            <div class="dialog-actions"><button type="button" class="secondary" data-close>@T("关闭", "Close")</button></div></dialog>
+        <dialog id="revoke-device" aria-labelledby="revoke-title"><div class="dialog-head"><h2 id="revoke-title">@T("撤销", "Revoke") @d.Label</h2><button class="close" type="button" data-close aria-label="@T("关闭", "Close")">×</button></div><p>@T("这台设备将失去全部项目访问权限。重新接入需要新的配对码。已产生的项目记录会保留。", "This device will lose access to all projects. A new pairing code will be required to restore access. Existing project records will be retained.")</p>
+            <form method="post" asp-page="/Devices" asp-page-handler="RevokeDevice"><input type="hidden" name="deviceId" value="@d.DeviceId"><div class="dialog-actions"><button class="secondary" type="button" data-close>@T("取消", "Cancel")</button><button class="danger solid">@T("确认撤销设备", "Confirm revocation")</button></div></form></dialog>
+    }
+    <partial name="_Activity" model="Model.Activity"/>
+</div>

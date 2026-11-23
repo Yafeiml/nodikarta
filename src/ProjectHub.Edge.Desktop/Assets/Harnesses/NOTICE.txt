@@ -1,0 +1,10 @@
+Nodicarta Edge — client labels
+
+CX, CL, AG, CU, OC, DS and PI are original letter drawings made for
+Nodicarta Edge and distributed under the project's MIT license.
+They identify integrations with Codex, Claude Code, Google Antigravity,
+Cursor, OpenCode, DeepSeek Harness and Pi, respectively.
+Product names and trademarks belong to their respective owners.
+
+这七种字母图形由脉络项目绘制，随项目采用 MIT 许可分发。
+第三方产品名称和商标归相应权利人所有。

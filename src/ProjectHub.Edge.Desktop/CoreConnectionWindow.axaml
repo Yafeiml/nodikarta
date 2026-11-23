@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:ProjectHub.Edge.Desktop" x:Class="ProjectHub.Edge.Desktop.CoreConnectionWindow" x:ClassModifier="internal"
+        Width="445" SizeToContent="Height" MaxHeight="630" CanResize="False" CanMinimize="False" CanMaximize="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="White" Foreground="#172438"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="14" AutomationProperties.AutomationId="CoreConnectionWindow">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14" Margin="20,16,20,18">
+      <StackPanel x:Name="PairingForm" Spacing="11">
+        <StackPanel Spacing="3">
+          <TextBlock Foreground="#52647A" Text="{ui:Tr 当前 Core, English='Current Core'}"/>
+          <SelectableTextBlock x:Name="CurrentCore" TextWrapping="Wrap" FontWeight="SemiBold" AutomationProperties.AutomationId="CurrentCoreUri"/>
+        </StackPanel>
+        <TextBlock TextWrapping="Wrap" Foreground="#52647A" Text="{ui:Tr 在目标 Core 选择「添加设备」或「更新设备」。配对后请重新绑定本机目录。原有绑定和待发送记录保存在原数据库中。, English='Choose Add device or Update device in the target Core. Link local folders again after pairing. Previous bindings and unsent records stay in the original database.'}"/>
+        <TextBlock x:Name="Inventory" TextWrapping="Wrap" Foreground="#344F6B" AutomationProperties.AutomationId="CurrentPairingInventory"/>
+        <StackPanel Spacing="4">
+          <Label Target="{Binding #Address}" Padding="0" Content="{ui:Tr 目标 Core 地址, English='New Core address'}"/>
+          <TextBox x:Name="Address" Watermark="https://core.example.com" AutomationProperties.AutomationId="NewCoreAddress"/>
+        </StackPanel>
+        <StackPanel Spacing="4">
+          <Label Target="{Binding #Code}" Padding="0" Content="{ui:Tr 新配对码, English='New pairing code'}"/>
+          <TextBox x:Name="Code" PasswordChar="●" AutomationProperties.AutomationId="NewCorePairingCode"/>
+        </StackPanel>
+        <StackPanel Spacing="4">
+          <Label Target="{Binding #DeviceLabel}" Padding="0" Content="{ui:Tr 设备名称, English='Device name'}"/>
+          <TextBox x:Name="DeviceLabel" MaxLength="120" AutomationProperties.AutomationId="NewCoreDeviceName"/>
+        </StackPanel>
+      </StackPanel>
+      <StackPanel x:Name="AboutInfo" IsVisible="False" Spacing="8">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <Image Source="{x:Static ui:BrandMarks.Standard}" Width="48" Height="48" Stretch="Uniform"
+                 IsHitTestVisible="False" AutomationProperties.AutomationId="AboutBrandMark"/>
+          <TextBlock x:Name="Product" FontWeight="SemiBold" FontSize="20" VerticalAlignment="Center"/>
+        </StackPanel>
+        <SelectableTextBlock x:Name="VersionInfo" AutomationProperties.AutomationId="EdgeVersion" TextWrapping="Wrap"/>
+        <TextBlock Text="{ui:Tr 运行位置, English='Running from'}" Foreground="#52647A"/>
+        <SelectableTextBlock x:Name="ExecutableLocation" TextWrapping="Wrap"/>
+      </StackPanel>
+      <TextBlock x:Name="ReplacementHint" IsVisible="False" TextWrapping="Wrap" Text="{ui:Tr '确认后，此 Edge 将接替原设备。旧身份随即停用，项目授权和历史记录保留。'}"/>
+      <TextBlock x:Name="Problem" IsVisible="False" Foreground="#973D38" TextWrapping="Wrap" AutomationProperties.AutomationId="CoreChangeStatus"/>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+        <Button x:Name="CancelButton" Content="{ui:Tr 取消, English='Cancel'}" IsCancel="True" Click="Cancel" AutomationProperties.AutomationId="CancelCoreChange"/>
+        <Button x:Name="ConfirmButton" Content="{ui:Tr 更换并配对, English='Switch and pair'}" Background="#205B99" Foreground="White" Click="Confirm" AutomationProperties.AutomationId="ConfirmCoreChange"/>
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
+</Window>

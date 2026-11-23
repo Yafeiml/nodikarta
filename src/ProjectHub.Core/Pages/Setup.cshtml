@@ -1,0 +1,42 @@
+@page "/setup"
+@model SetupModel
+@{
+    ViewData["Title"] = T("首次设置", "Initial setup");
+}
+<section class="auth-card" aria-labelledby="setup-title">
+    <h1 id="setup-title">@T("首次设置", "Initial setup")</h1>
+    @if (Model.AlreadyInstalled)
+    {
+        <p role="alert">@T("管理员账号已创建，请登录管理后台。", "The administrator account has been created. Sign in to continue.")</p>
+        <a class="primary" asp-page="/Login">@T("前往登录", "Go to sign-in")</a>
+    }
+    else
+    {
+        <p class="intro">@T("为这台 Core 创建管理员账号。", "Create the administrator account for this Core.")</p>
+        @if (Model.Error is not null)
+        {
+            <p class="notice error" role="alert">@Model.Error</p>
+        }
+        <form method="post" class="stack">
+            <div class="field">
+                <label for="code">@T("首次安装码", "Setup code")</label>
+                <input id="code" name="code" type="password" required maxlength="128" autocomplete="off" aria-describedby="code-hint">
+                <small id="code-hint">@T("在 Core 容器启动日志中查看「首次安装码」。", "Find the setup code in the Core container startup log.")</small>
+            </div>
+            <div class="field">
+                <label for="username">@T("管理员账号", "Administrator username")</label>
+                <input id="username" name="username" value="@Model.Username" required maxlength="64" autocomplete="username" spellcheck="false">
+            </div>
+            <div class="field">
+                <label for="password">@T("密码", "Password")</label>
+                <input id="password" name="password" type="password" required minlength="12" maxlength="128" autocomplete="new-password" aria-describedby="password-hint">
+                <small id="password-hint">@T("使用 12 至 128 个字符。", "Use 12–128 characters.")</small>
+            </div>
+            <div class="field">
+                <label for="confirmPassword">@T("确认密码", "Confirm password")</label>
+                <input id="confirmPassword" name="confirmPassword" type="password" required minlength="12" maxlength="128" autocomplete="new-password">
+            </div>
+            <button class="primary" type="submit">@T("创建管理员账号", "Create administrator account")</button>
+        </form>
+    }
+</section>

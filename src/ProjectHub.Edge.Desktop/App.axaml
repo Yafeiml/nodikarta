@@ -1,0 +1,42 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ProjectHub.Edge.Desktop.App"
+             RequestedThemeVariant="Light">
+  <Application.Styles>
+    <FluentTheme />
+    <Style Selector=":is(Window)">
+      <Setter Property="Icon" Value="avares://ProjectHub.Edge.Desktop/Assets/edge.ico"/>
+    </Style>
+    <Style Selector="Border.windowTitleBar">
+      <Setter Property="Height" Value="42"/>
+      <Setter Property="Padding" Value="16,0,5,0"/>
+      <Setter Property="Background" Value="#F5F8FB"/>
+      <Setter Property="BorderBrush" Value="#DCE4EF"/>
+      <Setter Property="BorderThickness" Value="0,0,0,1"/>
+    </Style>
+    <Style Selector="StackPanel.titleBrand">
+      <Setter Property="Orientation" Value="Horizontal"/>
+      <Setter Property="Spacing" Value="9"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="StackPanel.titleBrand > Image">
+      <Setter Property="Width" Value="24"/>
+      <Setter Property="Height" Value="24"/>
+      <Setter Property="Stretch" Value="Uniform"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+    </Style>
+    <Style Selector="TextBlock.titleBrandName">
+      <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Foreground" Value="#172438"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border#Windows10Frame">
+      <Setter Property="IsVisible" Value="False"/>
+      <Setter Property="IsHitTestVisible" Value="False"/>
+      <Setter Property="BorderBrush" Value="#8395A8"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+  </Application.Styles>
+</Application>

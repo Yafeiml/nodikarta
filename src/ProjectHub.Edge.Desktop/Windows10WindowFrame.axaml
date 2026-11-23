@@ -1,0 +1,4 @@
+<Style xmlns="https://github.com/avaloniaui"
+       Selector=":is(Window)[WindowState=Normal] Border#Windows10Frame">
+  <Setter Property="IsVisible" Value="True"/>
+</Style>

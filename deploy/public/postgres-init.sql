@@ -1,0 +1,4 @@
+\set ON_ERROR_STOP on
+\getenv app_password NODICARTA_DB_PASSWORD
+CREATE ROLE nodicarta LOGIN PASSWORD :'app_password' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+ALTER DATABASE nodicarta OWNER TO nodicarta;

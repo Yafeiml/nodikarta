@@ -1,0 +1,4 @@
+networks:
+  default:
+    name: ${NODICARTA_DB_NETWORK:?Set this to your existing PostgreSQL Docker network}
+    external: true

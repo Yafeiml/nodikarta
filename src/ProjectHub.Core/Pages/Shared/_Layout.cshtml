@@ -1,0 +1,47 @@
+@{
+    var page=ViewContext.RouteData.Values["page"] as string;
+    var authenticated=User.Identity?.IsAuthenticated == true;
+    var language = Preference(Context.Request);
+    var returnUrl = Context.Request.PathBase + Context.Request.Path +
+        (HttpMethods.IsGet(Context.Request.Method) ? Context.Request.QueryString : QueryString.Empty);
+}
+<!DOCTYPE html>
+<html lang="@System.Globalization.CultureInfo.CurrentUICulture.Name" data-date-locale="@System.Globalization.CultureInfo.CurrentCulture.Name"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>@ViewData["Title"] · @T("脉络", "Nodicarta") Core</title><link rel="stylesheet" href="~/site.css" asp-append-version="true">
+    <link rel="icon" type="image/svg+xml" sizes="any" media="(prefers-color-scheme: light)" href="~/favicon.svg" asp-append-version="true">
+    <link rel="icon" type="image/svg+xml" sizes="any" media="(prefers-color-scheme: dark)" href="~/favicon-dark.svg" asp-append-version="true">
+    <script defer src="~/admin.js" asp-append-version="true"></script></head>
+<body class="@(authenticated ? "admin" : "auth")">
+<a class="skip" href="#content">@T("跳到主要内容", "Skip to content")</a>
+<header class="topbar"><div class="bar-inner">
+    <a class="brand" href="~/" aria-label="@T("脉络 Core 首页", "Nodicarta Core home")"><img class="brand-mark" src="~/brand-mark.svg" asp-append-version="true" width="40" height="40" alt="">@T("脉络", "Nodicarta") <span class="brand-core">Core</span></a>
+    @if (authenticated)
+    {
+        <nav class="admin-nav" aria-label="@T("管理导航", "Administration")"><a asp-page="/Projects" aria-current="@(page is "/Projects" or "/Project" ? "page" : null)">@T("项目", "Projects")</a>
+            <a asp-page="/Devices" aria-current="@(page is "/Devices" or "/Device" ? "page" : null)">@T("设备", "Devices")</a></nav>
+    }
+    <div class="account">
+        <details class="language-picker">
+            <summary class="quiet-button">@T("语言", "Language")</summary>
+            <form method="post" asp-page="/Language" aria-label="@T("选择界面语言", "Select interface language")">
+                <input type="hidden" name="returnUrl" value="@returnUrl" />
+                @foreach(var option in new[]{("auto", T("自动", "Auto")), ("zh", "简体中文"), ("en", "English")})
+                {
+                    <button type="submit" name="choice" value="@option.Item1" lang="@(option.Item1 == "zh" ? "zh-CN" : option.Item1 == "en" ? "en" : null)" aria-pressed="@(language == option.Item1 ? "true" : "false")">@option.Item2</button>
+                }
+            </form>
+        </details>
+        @if (authenticated)
+        {
+            <span class="account-name">@User.Identity!.Name</span>
+            <a class="quiet-button" href="~/account/password">@T("修改密码", "Change password")</a>
+            <form method="post" asp-page="/Projects" asp-page-handler="Logout"><button type="submit" class="quiet-button">@T("退出登录", "Sign out")</button></form>
+        }
+    </div>
+    </div></header>
+<main id="content">
+    @if (TempData["Notice"] is string flash && page is not "/Login"){ <div class="flash" role="status">@flash</div> }
+    @RenderBody()
+</main>
+<footer class="app-footer"><small>Core v@(typeof(Program).Assembly.GetName().Version!.ToString(3))</small></footer>
+</body></html>

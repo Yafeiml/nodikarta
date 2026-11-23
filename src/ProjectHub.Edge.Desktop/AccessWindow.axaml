@@ -1,0 +1,312 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:desktop="using:ProjectHub.Edge.Desktop" xmlns:edge="using:ProjectHub.Edge"
+    xmlns:svg="using:Avalonia.Svg"
+    x:Class="ProjectHub.Edge.Desktop.AccessWindow" x:ClassModifier="internal"
+    AutomationProperties.AutomationId="AccessWindow" Background="White" Foreground="#182A3D"
+    FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="13">
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="desktop:AccessChoice" x:DataType="desktop:AccessChoice">
+      <TextBlock Text="{Binding Label}"/>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+  <UserControl.Resources>
+    <SolidColorBrush x:Key="ConnectionCardBackground" Color="#F5F8FC"/>
+    <SolidColorBrush x:Key="ClientListLine" Color="#E5E5E5"/>
+    <svg:SvgImage x:Key="codex" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/codex.svg"/>
+    <svg:SvgImage x:Key="claude" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/claude.svg"/>
+    <svg:SvgImage x:Key="antigravity" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/antigravity.svg"/>
+    <svg:SvgImage x:Key="cursor" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/cursor.svg"/>
+    <svg:SvgImage x:Key="opencode" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/opencode.svg"/>
+    <svg:SvgImage x:Key="deepseek" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/deepseek.svg"/>
+    <svg:SvgImage x:Key="pi" Source="avares://ProjectHub.Edge.Desktop/Assets/Harnesses/pi.svg"/>
+  </UserControl.Resources>
+  <UserControl.Styles>
+    <Style Selector="TextBlock.muted"><Setter Property="Foreground" Value="#53677A"/><Setter Property="FontSize" Value="12"/><Setter Property="TextWrapping" Value="Wrap"/></Style>
+    <Style Selector="TextBlock.field"><Setter Property="FontWeight" Value="Medium"/><Setter Property="FontSize" Value="13"/></Style>
+    <Style Selector="Path.icon"><Setter Property="Width" Value="17"/><Setter Property="Height" Value="17"/><Setter Property="Stretch" Value="Uniform"/><Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/><Setter Property="StrokeThickness" Value="1.65"/><Setter Property="VerticalAlignment" Value="Center"/></Style>
+    <Style Selector="TextBlock.navLabel"><Setter Property="VerticalAlignment" Value="Center"/></Style>
+    <Style Selector="ComboBox"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="MinHeight" Value="36"/><Setter Property="CornerRadius" Value="6"/><Setter Property="BorderBrush" Value="#BCCAD5"/><Setter Property="Background" Value="White"/><Setter Property="FontSize" Value="13"/></Style>
+    <Style Selector="Button"><Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="13,7"/><Setter Property="MinHeight" Value="34"/><Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Normal"/><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#C7D2DC"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Foreground" Value="#2C4255"/></Style>
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#EDF3F7"/><Setter Property="BorderBrush" Value="#A5B6C2"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="#20599C"/><Setter Property="BorderBrush" Value="#20599C"/><Setter Property="Foreground" Value="White"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#16487F"/><Setter Property="BorderBrush" Value="#16487F"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.ghost"><Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#355472"/></Style>
+    <Style Selector="Button.aux"><Setter Property="Background" Value="White"/><Setter Property="Foreground" Value="#285B90"/><Setter Property="BorderBrush" Value="#BFCDDB"/><Setter Property="FontWeight" Value="Medium"/></Style>
+    <Style Selector="Button.aux:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#EDF4FB"/><Setter Property="BorderBrush" Value="#96B2CC"/><Setter Property="Foreground" Value="#15497F"/></Style>
+    <Style Selector="Button.aux:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#DFECF7"/><Setter Property="BorderBrush" Value="#7296B5"/><Setter Property="Foreground" Value="#15497F"/></Style>
+    <Style Selector="Button.disconnect">
+      <Setter Property="Background" Value="#FFF3F1"/><Setter Property="BorderBrush" Value="#B77E78"/><Setter Property="Foreground" Value="#95403D"/>
+    </Style>
+    <Style Selector="Button.disconnect:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#FBE6E4"/><Setter Property="BorderBrush" Value="#AC6D67"/><Setter Property="Foreground" Value="#803632"/>
+    </Style>
+    <Style Selector="Button.disconnect:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="#F6D5D1"/><Setter Property="BorderBrush" Value="#95403D"/><Setter Property="Foreground" Value="#692C29"/>
+    </Style>
+    <Style Selector="Button.caption"><Setter Property="Width" Value="40"/><Setter Property="Padding" Value="0"/><Setter Property="MinHeight" Value="32"/><Setter Property="CornerRadius" Value="4"/></Style>
+    <Style Selector="Button.harnessAction">
+      <Setter Property="Padding" Value="9,0"/><Setter Property="Height" Value="30"/><Setter Property="MinHeight" Value="30"/>
+      <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Border.rail"><Setter Property="Width" Value="152"/><Setter Property="Padding" Value="10,17,10,12"/></Style>
+    <Style Selector="Button.nav"><Setter Property="HorizontalAlignment" Value="Stretch"/><Setter Property="HorizontalContentAlignment" Value="Left"/><Setter Property="Padding" Value="13,9"/><Setter Property="MinHeight" Value="39"/><Setter Property="Foreground" Value="#495F70"/></Style>
+    <Style Selector="Button.nav.current"><Setter Property="Background" Value="#DDEAF8"/><Setter Property="Foreground" Value="#174D88"/><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="WrapPanel.pillGroup > Button.pill">
+      <Setter Property="ContentTemplate"><DataTemplate x:DataType="x:String"><TextBlock Text="{Binding .}" VerticalAlignment="Center"/></DataTemplate></Setter>
+    </Style>
+    <Style Selector="Button.current:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#D2E4F5"/><Setter Property="Foreground" Value="#174D88"/></Style>
+    <Style Selector="Button.current:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#C4DBF0"/><Setter Property="Foreground" Value="#174D88"/></Style>
+    <Style Selector="Border.body"><Setter Property="Padding" Value="25,17,25,17"/></Style>
+    <Style Selector="Border.connection"><Setter Property="CornerRadius" Value="8"/><Setter Property="Background" Value="{StaticResource ConnectionCardBackground}"/><Setter Property="BorderBrush" Value="#D5E1EB"/><Setter Property="BorderThickness" Value="1"/><Setter Property="Padding" Value="16"/></Style>
+    <Style Selector="Border.grant"><Setter Property="Background" Value="#EDF1F6"/></Style>
+    <Style Selector="Border.grant.confirmed"><Setter Property="Background" Value="#E6F3ED"/></Style>
+    <Style Selector="Border.grant.confirmed > TextBlock"><Setter Property="Foreground" Value="#2A6754"/></Style>
+    <StyleInclude Source="/ButtonStates.axaml"/>
+    <Style Selector="TextBlock.harnessStatus"><Setter Property="Foreground" Value="#53677A"/></Style>
+    <Style Selector="TextBlock.harnessStatus.connected"><Setter Property="Foreground" Value="#146344"/></Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="Auto,*">
+    <Border Classes="windowTitleBar" AutomationProperties.AutomationId="AccessTitleBar">
+      <Grid ColumnDefinitions="*,Auto">
+        <Border Background="Transparent" PointerPressed="DragTitle">
+          <StackPanel Classes="titleBrand">
+            <Image Source="{x:Static desktop:BrandMarks.Micro}" AutomationProperties.AutomationId="AccessBrandMark"/>
+            <TextBlock Classes="titleBrandName" Text="{desktop:Tr '脉络 Edge'}" AutomationProperties.AutomationId="AccessBrandName"/>
+            <StackPanel x:Name="DirectoryTitle" Orientation="Horizontal" Spacing="9">
+              <Border Width="1" Height="13" Background="#C7D3DD" Margin="3,0"/>
+              <TextBlock Text="{desktop:Tr '目录设置'}" Foreground="#52687A" VerticalAlignment="Center"/>
+            </StackPanel>
+          </StackPanel>
+        </Border>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button x:Name="DirectoryMinimizeButton" Classes="ghost caption" Click="Minimize" AutomationProperties.Name="{desktop:Tr '最小化'}" ToolTip.Tip="{desktop:Tr '最小化'}"><Path Width="11" Height="2" Data="M0,1 H11" Stroke="#4B6073" StrokeThickness="1.3"/></Button>
+          <Button Classes="titleClose" Click="HideWindow" AutomationProperties.Name="{desktop:Tr '收回到托盘'}" ToolTip.Tip="{desktop:Tr '收回到托盘'}" AutomationProperties.AutomationId="HideAccessWindow"><Path/></Button>
+        </StackPanel>
+      </Grid>
+    </Border>
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*">
+      <Border x:Name="Rail" Classes="rail" Background="#F2F6F8" BorderBrush="#DCE5EB" BorderThickness="0,0,1,0">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <StackPanel Spacing="5">
+            <Button x:Name="ClientNav" Classes="ghost nav current" Tag="client" Click="Navigate" AutomationProperties.Name="{desktop:Tr '目录设置'}" ToolTip.Tip="{desktop:Tr '目录设置'}" AutomationProperties.AutomationId="AccessClientTab">
+              <StackPanel Orientation="Horizontal" Spacing="10"><Path Classes="icon" Data="M4,4 H20 V16 H4 Z M8,20 H16 M12,16 V20"/><TextBlock Classes="navLabel" Text="{desktop:Tr '目录设置'}"/></StackPanel>
+            </Button>
+            <Button x:Name="CatalogNav" Classes="ghost nav" Tag="catalog" Click="Navigate" AutomationProperties.Name="{desktop:Tr '工具目录'}" ToolTip.Tip="{desktop:Tr '工具目录'}" AutomationProperties.AutomationId="AccessCatalogTab">
+              <StackPanel Orientation="Horizontal" Spacing="10"><Path Classes="icon" Data="M3,3 H10 V10 H3 Z M14,3 H21 V10 H14 Z M3,14 H10 V21 H3 Z M14,14 H21 V21 H14 Z"/><TextBlock Classes="navLabel" Text="{desktop:Tr '工具目录'}"/></StackPanel>
+            </Button>
+          </StackPanel>
+          <StackPanel Grid.Row="2" Spacing="7">
+            <Border Height="1" Background="#DCE5EA" Margin="4,0"/>
+            <Button x:Name="OverviewNav" Classes="ghost nav" Click="CloseWindow" AutomationProperties.Name="{desktop:Tr '返回设备概览'}" ToolTip.Tip="{desktop:Tr '返回设备概览（Esc）'}" AutomationProperties.AutomationId="CloseAccessButton">
+              <StackPanel Orientation="Horizontal" Spacing="10"><Path Classes="icon" Data="M19,12 H4 M11,5 L4,12 L11,19"/><TextBlock Classes="navLabel" Text="{desktop:Tr '设备概览'}"/></StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+        <Border x:Name="ProjectHeader" BorderBrush="#E2E8EE" BorderThickness="0,0,0,1" Padding="17,5,12,5">
+          <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="8">
+            <Path Data="M2,6 H9 L11,8 H22 V19 H2 Z" Width="17" Height="15" Stretch="Uniform" Stroke="#647C90" StrokeThickness="1.65" VerticalAlignment="Center"/>
+            <TextBlock x:Name="ProjectName" Grid.Column="1" MaxWidth="210" FontSize="13" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" AutomationProperties.AutomationId="AccessProject"/>
+            <Border x:Name="GrantBadge" Classes="grant" Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" Padding="7,2" CornerRadius="4">
+              <TextBlock x:Name="Grant" FontSize="11" FontWeight="SemiBold" AutomationProperties.AutomationId="AccessGrant"/>
+            </Border>
+            <Button x:Name="RefreshAccessButton" Grid.Column="3" Classes="aux" MinHeight="28" Padding="9,3" VerticalAlignment="Center" Click="RefreshAccess" AutomationProperties.Name="{desktop:Tr '刷新授权'}" AutomationProperties.AutomationId="RefreshAccessButton">
+              <StackPanel Orientation="Horizontal" Spacing="6"><Path Width="13" Height="13" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.6" VerticalAlignment="Center" Data="M13.8,6 A5.8,5.8 0 1 0 14,10 M14,2 V6.5 H9.5"/><TextBlock Text="{desktop:Tr '刷新授权'}" FontSize="12" VerticalAlignment="Center"/></StackPanel>
+            </Button>
+          </Grid>
+        </Border>
+        <Border x:Name="Body" Classes="body" Grid.Row="1">
+          <Grid>
+            <ScrollViewer x:Name="DevicePage" IsVisible="False" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="14" Margin="0,0,12,0">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                  <Button Classes="pill action" Width="32" Height="32" Padding="0" HorizontalContentAlignment="Center"
+                          Click="CloseWindow" ToolTip.Tip="{desktop:Tr '返回设备概览（Esc）'}"
+                          AutomationProperties.Name="{desktop:Tr '返回设备概览'}" AutomationProperties.AutomationId="CloseGlobalAccessButton">
+                    <Path Classes="icon" Width="16" Height="16" Data="M19,12 H4 M11,5 L4,12 L11,19"/>
+                  </Button>
+                  <TextBlock Grid.Column="1" Text="{desktop:Tr '智能体接入'}" FontSize="22" FontWeight="Medium" VerticalAlignment="Center" AutomationProperties.AutomationId="DeviceAccessHeading"/>
+                  <Button x:Name="InstallDetectedButton" Grid.Column="2" Classes="primary harnessAction" Click="InstallHarnesses"
+                          Content="{desktop:Tr '一键接入已安装'}" ToolTip.Tip="{desktop:Tr '接入本机已安装的智能体', English='Connect installed clients'}" AutomationProperties.AutomationId="InstallDetectedHarnesses"/>
+                </Grid>
+                <WrapPanel Classes="pillGroup" AutomationProperties.AutomationId="AccessMethods">
+                  <Button x:Name="ClientsFormat" Classes="pill current" Content="{desktop:Tr '常用客户端'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatClients"/>
+                  <Button x:Name="StdioFormat" Classes="pill" Content="{desktop:Tr '其他客户端 · STDIO'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatStdio"/>
+                  <Button x:Name="SkillsFormat" Classes="pill" Content="{desktop:Tr '通用 Skills'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatSkills"/>
+                </WrapPanel>
+                <Border x:Name="HarnessPanel" Classes="connection" Background="White" BorderBrush="{StaticResource ClientListLine}"
+                        Padding="0" AutomationProperties.AutomationId="HarnessPanel">
+                  <ItemsControl x:Name="HarnessRows" Grid.IsSharedSizeScope="True" AutomationProperties.AutomationId="HarnessRows">
+                    <ItemsControl.Styles>
+                      <Style Selector="ItemsControl#HarnessRows > ContentPresenter:nth-child(n+2)">
+                        <Setter Property="BorderBrush" Value="{StaticResource ClientListLine}"/>
+                        <Setter Property="BorderThickness" Value="0,1,0,0"/>
+                      </Style>
+                    </ItemsControl.Styles>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="desktop:HarnessListItem">
+                        <Border Height="52" Padding="16,0" AutomationProperties.AutomationId="{Binding Client.Id, StringFormat='HarnessRow_{0}'}">
+                          <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                              <ColumnDefinition Width="36"/><ColumnDefinition Width="*"/>
+                              <ColumnDefinition Width="Auto" SharedSizeGroup="HarnessStatusAction"/><ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Width="36" Height="36" CornerRadius="9" VerticalAlignment="Center" Background="#FAFAFA" BorderBrush="#EAEAEA" BorderThickness="1"
+                                    AutomationProperties.AutomationId="{Binding Client.Id, StringFormat='HarnessIconTile_{0}'}">
+                              <Image Source="{Binding Icon}" Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                     IsHitTestVisible="False" AutomationProperties.AutomationId="{Binding Client.Id, StringFormat='HarnessIcon_{0}'}"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                              <TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                              <TextBlock Text="{Binding Status}" Classes="harnessStatus" Classes.connected="{Binding Client.IsConnected}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                         ToolTip.Tip="{Binding Status}" AutomationProperties.AutomationId="{Binding Client.Id, StringFormat='HarnessStatus_{0}'}"/>
+                            </StackPanel>
+                            <Button Grid.Column="2" Classes="harnessAction" Classes.aux="{Binding !Client.CanDisconnect}" Classes.disconnect="{Binding Client.CanDisconnect}"
+                                    MinWidth="76" HorizontalAlignment="Stretch" Click="InstallHarnesses"
+                                    Content="{Binding ActionLabel}" IsEnabled="{Binding CanAct}"
+                                    AutomationProperties.Name="{Binding ActionName}" AutomationProperties.AutomationId="{Binding Client.Id, StringFormat='HarnessInstall_{0}'}"/>
+                            <Button Grid.Column="3" Classes="harnessAction" Width="62" Click="CopyHarnessConfig"
+                                    AutomationProperties.Name="{Binding CopyName}"
+                                    ToolTip.Tip="{Binding CopyName}" AutomationProperties.AutomationId="{Binding Client.Id, StringFormat='HarnessCopy_{0}'}">
+                              <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Path Classes="icon" Width="12" Height="13" Data="M3,10 V2 H11 M6,5 H15 V16 H6 Z"/>
+                                <TextBlock Text="{Binding CopyText}" FontSize="12" VerticalAlignment="Center"/>
+                              </StackPanel>
+                            </Button>
+                          </Grid>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+                <Border x:Name="StdioPanel" Classes="connection" IsVisible="False">
+                  <StackPanel Spacing="13">
+                    <StackPanel Spacing="5">
+                      <TextBlock Text="{desktop:Tr 'STDIO 客户端配置'}" FontSize="17" FontWeight="SemiBold"/>
+                      <TextBlock Classes="muted" Text="{desktop:Tr '将这份 JSON 添加到客户端的全局 MCP 设置。客户端从聊天的工作目录启动 Edge 时，会自动识别所属项目。'}"/>
+                    </StackPanel>
+                    <WrapPanel ItemSpacing="7" LineSpacing="5">
+                      <Button x:Name="ToggleConfigButton" Classes="aux" Click="ToggleConfig" AutomationProperties.AutomationId="ToggleAccessConfig"/>
+                      <Button x:Name="CopyConfigButton" Classes="aux" Content="{desktop:Tr '复制 STDIO 配置'}" Click="CopyConfig" AutomationProperties.AutomationId="CopyConfigButton"/>
+                    </WrapPanel>
+                    <Border x:Name="DeviceConfigPanel" Background="White" CornerRadius="6" BorderBrush="#D8E2EB" BorderThickness="1" Padding="11,8" IsVisible="False">
+                      <SelectableTextBlock x:Name="ConfigText" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="12" Foreground="#30465C" AutomationProperties.AutomationId="AccessConfigPreview"/>
+                    </Border>
+                  </StackPanel>
+                </Border>
+                <Border x:Name="SkillsHost" Classes="connection" IsVisible="False" AutomationProperties.AutomationId="SkillsHost">
+                  <StackPanel Spacing="10">
+                    <WrapPanel ItemSpacing="24" LineSpacing="5">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Classes="muted" Text="{desktop:Tr '已安装'}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SkillsCount" Text="{desktop:Tr '检测中'}" FontWeight="Medium" AutomationProperties.AutomationId="SkillsCount"/>
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Classes="muted" Text="{desktop:Tr '已安装版本'}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SkillsLocalVersion" Text="{desktop:Tr '检测中'}" FontWeight="Medium" AutomationProperties.AutomationId="SkillsLocalVersion"/>
+                      </StackPanel>
+                      <StackPanel Orientation="Horizontal" Spacing="8" Background="Transparent"
+                                  ToolTip.Tip="{desktop:Tr '当前 Edge 随包提供的 Skills 版本。'}">
+                        <TextBlock Classes="muted" Text="{desktop:Tr 'Edge 内置版本'}" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SkillsBundleVersion" FontWeight="Medium" AutomationProperties.AutomationId="SkillsBundleVersion"/>
+                      </StackPanel>
+                    </WrapPanel>
+                    <TextBlock x:Name="SkillsDetails" Classes="muted" IsVisible="False" AutomationProperties.AutomationId="SkillsDetails"/>
+                    <WrapPanel ItemSpacing="8" LineSpacing="6">
+                      <Button Content="{desktop:Tr '检查版本'}" Click="CheckSkills" Classes="aux" AutomationProperties.AutomationId="CheckSkillsButton"/>
+                      <Button x:Name="UpdateSkillsButton" Content="{desktop:Tr '更新 Skills'}" Click="UpdateSkills" IsEnabled="False" AutomationProperties.AutomationId="UpdateSkillsButton"/>
+                      <CheckBox x:Name="AutoUpdateSkillsBox" Content="{desktop:Tr '随 Edge 自动更新'}" Click="ToggleAutoUpdateSkills"
+                                Margin="4,0,0,0" VerticalAlignment="Center" ToolTip.Tip="{desktop:Tr '启动 Edge 时更新受管 Skills，并补装新版本新增的 Skills'}"
+                                AutomationProperties.AutomationId="AutoUpdateSkillsBox"/>
+                    </WrapPanel>
+                  </StackPanel>
+                </Border>
+              </StackPanel>
+            </ScrollViewer>
+            <ScrollViewer x:Name="ClientPage" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel Spacing="15" Margin="0,0,12,0">
+                <TextBlock Text="{desktop:Tr '目录设置'}" FontSize="22" FontWeight="Medium"/>
+                <StackPanel Spacing="6">
+                  <TextBlock Classes="field" Text="{desktop:Tr '本机项目目录'}"/>
+                  <ComboBox x:Name="DirectoryList" SelectionChanged="DirectoryChanged" AutomationProperties.Name="{desktop:Tr '本机项目目录'}" AutomationProperties.AutomationId="AccessDirectory">
+                    <ComboBox.ItemTemplate><DataTemplate x:DataType="edge:LocalBinding"><TextBlock Text="{Binding LocalPath}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding LocalPath}"/></DataTemplate></ComboBox.ItemTemplate>
+                  </ComboBox>
+                </StackPanel>
+                <StackPanel Spacing="6">
+                  <Grid ColumnDefinitions="24,*,Auto" ColumnSpacing="7">
+                    <Border Width="23" Height="23" CornerRadius="6" Background="#E7F1EE" VerticalAlignment="Center">
+                      <Path Data="M11,2 L13,8 L19,10 L13,12 L11,18 L9,12 L3,10 L9,8 Z" Width="13" Height="13" Stretch="Uniform" Stroke="#387365" StrokeThickness="1.6"/>
+                    </Border>
+                    <TextBlock x:Name="ScopeSummary" Grid.Column="1" Classes="field" VerticalAlignment="Center" AutomationProperties.AutomationId="AccessScopeSummary"/>
+                    <Button x:Name="AdjustScopeButton" Grid.Column="2" Classes="pill action" Click="AdjustScope" AutomationProperties.Name="{Binding #ScopeAction.Text}" AutomationProperties.AutomationId="AdjustAccessScope">
+                      <TextBlock x:Name="ScopeAction" Text="{desktop:Tr '调整范围'}" VerticalAlignment="Center"/>
+                    </Button>
+                  </Grid>
+                  <TextBlock x:Name="ConfigHint" Classes="muted" AutomationProperties.AutomationId="ConfigHint"/>
+                  <Grid x:Name="ProfileGrid" ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="False">
+                    <StackPanel x:Name="ProfileField" Spacing="6">
+                      <TextBlock Classes="field" Text="{desktop:Tr '工具范围'}"/>
+                      <ComboBox x:Name="ProfileList" SelectionChanged="OptionsChanged" AutomationProperties.Name="{desktop:Tr '工具范围'}" AutomationProperties.AutomationId="AccessProfile"/>
+                    </StackPanel>
+                    <StackPanel x:Name="EndpointField" Grid.Column="1" Spacing="6">
+                      <TextBlock Classes="field" Text="{desktop:Tr '任务接收端点'}"/>
+                      <ComboBox x:Name="EndpointList" SelectionChanged="OptionsChanged" AutomationProperties.Name="{desktop:Tr '任务接收端点'}" AutomationProperties.AutomationId="AccessEndpoint"/>
+                    </StackPanel>
+                  </Grid>
+                </StackPanel>
+                <WrapPanel ItemSpacing="7" LineSpacing="5">
+                  <Button x:Name="SaveButton" Classes="primary" Content="{desktop:Tr '保存目录设置'}" Click="SavePolicy" AutomationProperties.AutomationId="SaveWorkspacePolicyButton"/>
+                  <Button x:Name="CheckButton" Classes="aux" Click="Probe" AutomationProperties.Name="{desktop:Tr '只读自检'}" AutomationProperties.AutomationId="AccessCheckButton">
+                    <StackPanel Orientation="Horizontal" Spacing="6"><Path Width="13" Height="13" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.5" VerticalAlignment="Center" Data="M8,1 L14,3 V7.5 Q14,12 8,15 Q2,12 2,7.5 V3 Z M5,7.6 L7,9.7 L11,5.8"/><TextBlock Text="{desktop:Tr '只读自检'}" VerticalAlignment="Center"/></StackPanel>
+                  </Button>
+                </WrapPanel>
+              </StackPanel>
+            </ScrollViewer>
+            <Grid x:Name="CatalogPage" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="9">
+              <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{desktop:Tr '工具目录'}" FontSize="22" FontWeight="Medium"/><TextBlock x:Name="CatalogCount" Grid.Column="1" Classes="muted" VerticalAlignment="Center"/></Grid>
+              <WrapPanel x:Name="CategoryBar" Classes="pillGroup" Grid.Row="1" AutomationProperties.AutomationId="AccessCategories"/>
+              <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="8">
+                <ComboBox x:Name="ModeFilter" SelectionChanged="FilterChanged" AutomationProperties.Name="{desktop:Tr '按读写筛选'}" AutomationProperties.AutomationId="ToolAccessFilter"/>
+                <ComboBox x:Name="EndpointFilter" Grid.Column="1" SelectionChanged="FilterChanged" AutomationProperties.Name="{desktop:Tr '按端点要求筛选'}" AutomationProperties.AutomationId="ToolEndpointFilter"/>
+              </Grid>
+              <ScrollViewer x:Name="CatalogScroll" Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="0,0,12,0">
+                  <TextBlock x:Name="CatalogEmpty" Classes="muted" Margin="1,14" AutomationProperties.AutomationId="CatalogEmpty"/>
+                  <ItemsControl x:Name="ToolRows" AutomationProperties.AutomationId="AccessCatalog">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="desktop:AccessToolRow">
+                        <Border Padding="1,9,6,10" BorderBrush="#E3E9EE" BorderThickness="0,0,0,1" AutomationProperties.AutomationId="{Binding Name}">
+                          <StackPanel Spacing="3">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="5">
+                              <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <Ellipse Width="6" Height="6" Fill="{Binding StatusBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Scope}" Foreground="#4B6172" FontSize="11"/>
+                              </StackPanel>
+                            </Grid>
+                            <WrapPanel>
+                              <TextBlock Text="{Binding Name}" FontFamily="Cascadia Mono, Consolas" FontSize="11" Foreground="#50667A" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                              <Border CornerRadius="3" Padding="5,0" Background="#EDF2F5"><TextBlock Text="{Binding Access}" FontSize="10" Foreground="#455E70"/></Border>
+                            </WrapPanel>
+                            <TextBlock Text="{Binding Description}" Classes="muted"/>
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </ScrollViewer>
+            </Grid>
+          </Grid>
+        </Border>
+        <Border x:Name="OutcomeBar" Grid.Row="2" IsVisible="False" Padding="16,8" BorderBrush="#DBE5EE" BorderThickness="0,1,0,0" Background="#F3F7FA">
+          <ScrollViewer MaxHeight="104" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <TextBlock x:Name="Outcome" Classes="muted" AutomationProperties.AutomationId="AccessResult" AutomationProperties.LiveSetting="Polite"/>
+          </ScrollViewer>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>

@@ -1,0 +1,44 @@
+@page "/projects"
+@model ProjectsModel
+@{ ViewData["Title"] = T("项目", "Projects"); }
+<div class="workspace">
+    <header class="page-head"><h1>@T("项目", "Projects")</h1><button class="primary" type="button" data-open="create-project"><span aria-hidden="true">＋</span> @T("创建项目", "Create project")</button></header>
+    <section class="panel" aria-label="@T("项目列表", "Project list")">
+        <div class="panel-head"><h2>@T("项目列表", "Project list")</h2>
+            <form method="get" class="search"><input type="search" aria-label="@T("搜索项目名称", "Search project names")" name="q" value="@Model.Search" placeholder="@T("搜索项目名称", "Search project names")"><button class="secondary">@T("搜索", "Search")</button></form>
+        </div>
+        @if (Model.Projects.Count != 0)
+        {
+            <div class="table-scroll"><table class="projects"><thead><tr><th>@T("项目", "Projects")</th><th class="num">@T("知识条目", "Knowledge entries")</th><th class="num">@T("附件", "Attachments")</th><th class="num">@T("授权设备", "Authorized devices")</th><th>@T("最近资料变更", "Latest content change")</th></tr></thead><tbody>
+            @foreach (var p in Model.Projects)
+            {
+                <tr data-project-id="@p.Id">
+                    <td><a class="entity-name" asp-page="/Project" asp-route-id="@p.Id">@p.Name</a><small><code>@AdminUi.Short(p.Id)</code></small></td>
+                    <td class="num" data-count="knowledge"><a asp-page="/Project" asp-route-id="@p.Id" asp-route-tab="knowledge">@p.KnowledgeCount</a></td>
+                    <td class="num" data-count="assets"><a asp-page="/Project" asp-route-id="@p.Id" asp-route-tab="assets">@p.AssetCount</a></td>
+                    <td class="num" data-count="devices"><a asp-page="/Project" asp-route-id="@p.Id" asp-route-tab="grants">@p.DeviceCount</a></td>
+                    <td>@if (p.Changed is DateTimeOffset changed)
+                        {<a class="change-title" asp-page="/Project" asp-route-id="@p.Id" asp-route-tab="@p.ChangeTab" asp-route-objectId="@p.ChangeId" asp-route-version="@p.ChangeVersion">@p.ChangeTitle</a><small><partial name="_Time" model="changed"/></small>}
+                        else { <span class="muted">@T("尚无资料", "No content yet")</span> }</td>
+                </tr>
+            }
+            </tbody></table></div>
+        }
+        else if (Model.Search.Length > 0 || Model.Number > 1)
+        {<p class="empty">@T("未找到符合条件的项目。", "No matching projects.") <a asp-page="/Projects">@T("清除筛选", "Clear filters")</a></p>}
+        else
+        {<div class="empty"><h3>@T("还没有项目", "No projects yet")</h3><p>@T("创建项目后，可以为设备授权并接收知识和附件。", "Create a project to grant devices access and receive knowledge and attachments.")</p><button type="button" class="secondary" data-open="create-project">@T("创建第一个项目", "Create the first project")</button></div>}
+        @if (Model.Number > 1 || Model.More)
+        {
+            <nav class="pager" aria-label="@T("项目列表翻页", "Project pagination")">@if (Model.Number > 1){<a asp-route-q="@Model.Search" asp-route-number="@(Model.Number-1)">@T("上一页", "Previous")</a>}<span>@T($"第 {Model.Number} 页", $"Page {Model.Number}")</span>@if (Model.More){<a asp-route-q="@Model.Search" asp-route-number="@(Model.Number+1)">@T("下一页", "Next")</a>}</nav>
+        }
+    </section>
+    <dialog id="create-project" aria-labelledby="create-title" data-auto-open="@(Model.Error is null ? null : "true")">
+        <div class="dialog-head"><h2 id="create-title">@T("创建项目", "Create project")</h2><button type="button" class="close" data-close aria-label="@T("关闭", "Close")">×</button></div>
+        <form method="post" class="stack"><input type="hidden" name="requestId" value="@Model.RequestId">
+            <label class="field" for="name">@T("项目名称", "Project name")<input id="name" name="name" value="@Model.Name" autofocus required maxlength="120" placeholder="@T("例如：客户服务平台", "e.g. Customer service portal")"></label>
+            @if (Model.Error is not null){ <p class="notice error" role="alert">@Model.Error</p> }
+            <div class="dialog-actions"><button type="button" class="secondary" data-close>@T("取消", "Cancel")</button><button class="primary">@T("创建项目", "Create project")</button></div>
+        </form>
+    </dialog>
+</div>

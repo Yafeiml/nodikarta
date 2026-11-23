@@ -1,0 +1,21 @@
+@model ActivityFilter
+@{
+    var f = Model;
+    var choices = f.Options.Concat(f.Selected).Distinct(f.Comparer).OrderBy(f.Display, StringComparer.CurrentCulture).ToArray();
+    var chosen = choices.Where(v => f.Selected.Contains(v, f.Comparer)).ToArray();
+    var multiple = T("已选 {0} 项","{0} selected");
+    var summary = chosen.Length switch { 0 => f.All, 1 => f.Display(chosen[0]), _ => string.Format(multiple, chosen.Length) };
+}
+<div class="filter-field">
+    <span id="label-@f.Key">@f.Label</span>
+    <details class="filter-menu" name="activity-filters" data-all="@f.All" data-multiple="@multiple">
+        <summary aria-labelledby="label-@f.Key current-@f.Key"><span id="current-@f.Key">@summary</span></summary>
+        <div class="filter-options" role="group" aria-labelledby="label-@f.Key">
+            @foreach (var value in choices)
+            {
+                <label><input type="checkbox" name="@f.Key" value="@value" checked="@chosen.Contains(value, f.Comparer)"><span>@f.Display(value)</span></label>
+            }
+            @if(choices.Length == 0){<small>@T("暂无可选项","No options available")</small>}
+        </div>
+    </details>
+</div>

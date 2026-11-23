@@ -1,0 +1,248 @@
+<Window xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:edge="using:ProjectHub.Edge" xmlns:desktop="using:ProjectHub.Edge.Desktop" x:Class="ProjectHub.Edge.Desktop.MainWindow" x:ClassModifier="internal" Title="{desktop:Tr '脉络 Edge'}"
+        Width="656" Height="552" CanResize="False" CanMaximize="False" WindowStartupLocation="CenterScreen" AutomationProperties.AutomationId="EdgeMainWindow"
+        ExtendClientAreaToDecorationsHint="True" ExtendClientAreaChromeHints="NoChrome"
+        ExtendClientAreaTitleBarHeightHint="0" Background="#F5F8FB" Foreground="#172438"
+        FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="14">
+  <Window.Styles>
+    <Style Selector="TextBlock.hint"><Setter Property="Foreground" Value="#52647A"/><Setter Property="FontSize" Value="13"/></Style>
+    <Style Selector="TextBlock.section"><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="FontSize" Value="15"/></Style>
+    <Style Selector="TextBlock.label"><Setter Property="FontWeight" Value="SemiBold"/></Style>
+    <Style Selector="Path.coreLinkIcon">
+      <Setter Property="Width" Value="12"/><Setter Property="Height" Value="12"/><Setter Property="Stretch" Value="Uniform"/>
+      <Setter Property="StrokeThickness" Value="1.5"/><Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/>
+      <Setter Property="Data" Value="M8,2 H14 V8 M14,2 L6,10 M6,3 H3 Q2,3 2,4 V13 Q2,14 3,14 H12 Q13,14 13,13 V10"/>
+    </Style>
+    <Style Selector="TextBox, ComboBox"><Setter Property="CornerRadius" Value="6"/><Setter Property="MinHeight" Value="36"/><Setter Property="BorderBrush" Value="#AAB9CC"/><Setter Property="Background" Value="White"/><Setter Property="BorderThickness" Value="1"/></Style>
+    <Style Selector="Button"><Setter Property="MinHeight" Value="34"/><Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="13,5"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#AAB9CC"/><Setter Property="BorderThickness" Value="1"/></Style>
+    <Style Selector="Button.primary"><Setter Property="Background" Value="#174E9D"/><Setter Property="BorderBrush" Value="#174E9D"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#123F82"/><Setter Property="BorderBrush" Value="#123F82"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#103667"/><Setter Property="BorderBrush" Value="#103667"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.pairAction">
+      <Setter Property="Width" Value="112"/><Setter Property="Height" Value="34"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.openCoreAction"><Setter Property="Background" Value="#4B6476"/><Setter Property="BorderBrush" Value="#4B6476"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.openCoreAction:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#3B5366"/><Setter Property="BorderBrush" Value="#3B5366"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.openCoreAction:pressed /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="#304657"/><Setter Property="BorderBrush" Value="#304657"/><Setter Property="Foreground" Value="White"/></Style>
+    <Style Selector="Button.language"><Setter Property="BorderThickness" Value="0"/><Setter Property="Background" Value="Transparent"/><Setter Property="Padding" Value="6,3"/><Setter Property="FontWeight" Value="Normal"/></Style>
+    <Style Selector="Button.language:pointerover /template/ ContentPresenter#PART_ContentPresenter"><Setter Property="Background" Value="Transparent"/></Style>
+    <StyleInclude Source="/ButtonStates.axaml"/>
+    <Style Selector="ScrollViewer.overview"><Setter Property="Background" Value="#F5F7FA"/></Style>
+    <Style Selector="Border.card">
+      <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#DCE4EC"/>
+      <Setter Property="BorderThickness" Value="1"/><Setter Property="CornerRadius" Value="10"/>
+      <Setter Property="Padding" Value="16,14"/>
+    </Style>
+    <Style Selector="Button.overviewAction">
+      <Setter Property="Width" Value="104"/><Setter Property="Height" Value="32"/><Setter Property="MinHeight" Value="32"/>
+      <Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="8,0"/>
+      <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Medium"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/><Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.directoryAction">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style Selector="Button.directoryAction Grid"><Setter Property="ColumnSpacing" Value="6"/></Style>
+    <Style Selector="Button.directoryAction Path">
+      <Setter Property="Width" Value="14"/><Setter Property="Height" Value="14"/><Setter Property="Stretch" Value="None"/>
+      <Setter Property="VerticalAlignment" Value="Center"/><Setter Property="Stroke" Value="{Binding $parent[Button].Foreground}"/>
+      <Setter Property="StrokeLineCap" Value="Round"/><Setter Property="StrokeThickness" Value="1.5"/>
+    </Style>
+  </Window.Styles>
+  <Panel>
+    <Decorator x:Name="PageHost">
+      <Grid RowDefinitions="Auto,*,Auto" Background="White">
+        <Border Classes="windowTitleBar" AutomationProperties.AutomationId="MainTitleBar">
+          <Grid ColumnDefinitions="*,Auto,Auto">
+            <Border Background="Transparent" PointerPressed="DragTitle">
+              <StackPanel Classes="titleBrand">
+                <Image Source="{x:Static desktop:BrandMarks.Micro}" AutomationProperties.AutomationId="MainBrandMark"/>
+                <TextBlock Classes="titleBrandName" Text="{desktop:Tr '脉络 Edge'}" AutomationProperties.AutomationId="MainBrandName"/>
+              </StackPanel>
+            </Border>
+            <Button x:Name="LanguageButton" Grid.Column="1" Classes="language" Click="OpenLanguageMenu" VerticalAlignment="Center"
+                    Width="84" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                    AutomationProperties.AutomationId="LanguageButton" AutomationProperties.Name="{desktop:Tr '语言', English='Language'}">
+              <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <TextBlock VerticalAlignment="Center" Text="{desktop:Tr '语言', English='Language'}"/>
+                <Path Width="7" Height="4" Stretch="Fill" VerticalAlignment="Center" Fill="{Binding $parent[Button].Foreground}" Data="M0,4 L3.5,0 L7,4 Z"/>
+              </StackPanel>
+              <Button.ContextMenu>
+                <ContextMenu Placement="BottomEdgeAlignedRight" Opened="ShowLanguagePreference">
+                  <MenuItem Header="{desktop:Tr '自动', English='Auto'}" Tag="auto" ToggleType="Radio" GroupName="UiLanguage"
+                            Click="ChangeLanguage" AutomationProperties.AutomationId="FollowSystemLanguage"/>
+                  <MenuItem Header="中文" Tag="zh-CN" ToggleType="Radio" GroupName="UiLanguage"
+                            Click="ChangeLanguage" AutomationProperties.AutomationId="ChineseLanguage"/>
+                  <MenuItem Header="English" Tag="en" ToggleType="Radio" GroupName="UiLanguage"
+                            Click="ChangeLanguage" AutomationProperties.AutomationId="EnglishLanguage"/>
+                </ContextMenu>
+              </Button.ContextMenu>
+            </Button>
+            <Button Grid.Column="2" Classes="titleClose" Click="HideWindow"
+                    ToolTip.Tip="{desktop:Tr '收回到托盘'}" AutomationProperties.Name="{desktop:Tr '收回到托盘'}" AutomationProperties.AutomationId="HideWindow">
+              <Path/>
+            </Button>
+          </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Classes.overview="{Binding #Overview.IsVisible}" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="20,16" Spacing="12">
+            <Border x:Name="Notice" IsVisible="False" CornerRadius="6" Padding="12,8" Background="#FFF0F0">
+              <TextBlock x:Name="NoticeText" Foreground="#92272D" TextWrapping="Wrap" AutomationProperties.AutomationId="Notice"/>
+            </Border>
+            <StackPanel x:Name="PairPanel" Spacing="13" IsVisible="False">
+              <StackPanel Spacing="2">
+                <TextBlock Text="{desktop:Tr '配对设备'}" FontSize="24" FontWeight="SemiBold"/>
+                <TextBlock Classes="hint" Text="{desktop:Tr '将此设备连接到脉络 Core。'}"/>
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="{desktop:Tr 'Core 地址'}"/>
+                <TextBox x:Name="CoreAddress" Text="http://127.0.0.1:29480" Watermark="https://core.example.com"
+                         AutomationProperties.Name="{desktop:Tr 'Core 地址'}" AutomationProperties.AutomationId="CoreAddress"/>
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="{desktop:Tr '设备名称'}"/>
+                <TextBox x:Name="DeviceName" MaxLength="120" AutomationProperties.Name="{desktop:Tr '设备名称'}" AutomationProperties.AutomationId="DeviceName"/>
+              </StackPanel>
+              <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="{desktop:Tr '一次性配对码'}"/>
+                <TextBox x:Name="PairingCode" PasswordChar="●" Watermark="{desktop:Tr '粘贴完整配对码'}" AutomationProperties.Name="{desktop:Tr '一次性配对码'}" AutomationProperties.AutomationId="PairingCode"/>
+                <TextBlock x:Name="PairHint" Classes="hint" TextWrapping="Wrap" AutomationProperties.AutomationId="PairingHint"/>
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                <Button Classes="pairAction openCoreAction" Click="OpenCore" AutomationProperties.Name="{desktop:Tr '打开 Core'}" AutomationProperties.AutomationId="PairOpenCore">
+                  <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"><TextBlock Text="{desktop:Tr '打开 Core'}" VerticalAlignment="Center"/><Path Classes="coreLinkIcon"/></StackPanel>
+                </Button>
+                <Button x:Name="PairButton" Classes="pairAction primary" Content="{desktop:Tr '配对设备'}" Click="Pair" AutomationProperties.AutomationId="PairButton"/>
+              </StackPanel>
+            </StackPanel>
+
+            <StackPanel x:Name="Overview" IsVisible="False" Spacing="12">
+              <Border Classes="card">
+                <StackPanel Spacing="12">
+                  <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <StackPanel Spacing="3" VerticalAlignment="Center">
+                      <WrapPanel ItemSpacing="8" LineSpacing="3">
+                        <Button x:Name="ManageCoreButton" Classes="pill action" Width="26" Height="26" Padding="4" VerticalAlignment="Center" IsEnabled="{Binding #RefreshButton.IsEnabled}"
+                                Click="ManageCoreConnection" AutomationProperties.AutomationId="ManageCoreConnection"
+                                AutomationProperties.Name="{desktop:Tr 重新配对或更换 Core, English='Pair again or change Core'}" ToolTip.Tip="{desktop:Tr 重新配对或更换 Core, English='Pair again or change Core'}">
+                          <Path Width="15" Height="15" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.5"
+                                Data="M2,5 H14 M10,1 L14,5 L10,9 M14,12 H2 M6,8 L2,12 L6,16"/>
+                        </Button>
+                        <TextBlock Text="Core" FontSize="20" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        <Border x:Name="CoreStatusBadge" Background="#EDF1F6" Padding="8,2" CornerRadius="10" VerticalAlignment="Center">
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Ellipse Width="5" Height="5" Fill="{Binding #CoreApiStatus.Foreground}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="CoreApiStatus" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" AutomationProperties.AutomationId="CoreApiStatus"/>
+                          </StackPanel>
+                        </Border>
+                      </WrapPanel>
+                      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                        <TextBlock Classes="hint" Text="{desktop:Tr '本机设备'}" FontSize="12"/>
+                        <TextBlock Grid.Column="1" x:Name="MachineName" Classes="hint" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="MachineName"/>
+                      </Grid>
+                    </StackPanel>
+                    <Button x:Name="RefreshButton" Grid.Column="1" Classes="pill action overviewAction" Click="Refresh" AutomationProperties.Name="{desktop:Tr '立即刷新'}" AutomationProperties.AutomationId="RefreshButton">
+                      <StackPanel Orientation="Horizontal" Spacing="6"><Path Width="14" Height="14" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.6" VerticalAlignment="Center" Data="M13.8,6 A5.8,5.8 0 1 0 14,10 M14,2 V6.5 H9.5"/><TextBlock Text="{desktop:Tr '立即刷新'}" VerticalAlignment="Center"/></StackPanel>
+                    </Button>
+                    <Button Grid.Column="2" Classes="pill action overviewAction" Click="OpenCore" AutomationProperties.Name="{desktop:Tr '打开 Core'}" AutomationProperties.AutomationId="OpenCoreButton">
+                      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"><TextBlock Text="{desktop:Tr '打开 Core'}" VerticalAlignment="Center"/><Path Classes="coreLinkIcon"/></StackPanel>
+                    </Button>
+                  </Grid>
+                  <Border Height="1" Background="#E4EAF0"/>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <TextBlock Classes="hint" Text="MCP · STDIO" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" x:Name="McpStdioStatus" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.AutomationId="McpStdioStatus" ToolTip.Tip="{desktop:Tr '由 AI 客户端按需启动，通过标准输入输出通信。统计此设备状态目录下新版 Edge 启动的进程。'}"/>
+                    <Button x:Name="GlobalAccessButton" Grid.Column="2" Classes="pill action overviewAction" Content="{desktop:Tr '智能体接入'}" Click="ShowGlobalSettings" AutomationProperties.AutomationId="GlobalAccessButton"/>
+                  </Grid>
+                </StackPanel>
+              </Border>
+              <Border Classes="card">
+                <StackPanel Spacing="14">
+                  <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                    <TextBlock Classes="section" Text="{desktop:Tr '授权项目'}" VerticalAlignment="Center"/>
+                    <Grid Grid.Column="1" x:Name="GrantControls" IsVisible="False">
+                        <ComboBox x:Name="ProjectList" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center"
+                                  Padding="11,5,64,5" SelectionChanged="SelectedProjectChanged"
+                                  AutomationProperties.AutomationId="ProjectList" AutomationProperties.Name="{desktop:Tr '授权项目'}">
+                          <ComboBox.ItemTemplate><DataTemplate x:DataType="edge:DeviceProject"><TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Border CornerRadius="5" Background="#EAF2FA" Margin="0,0,34,0" Padding="7,1" MinHeight="21" HorizontalAlignment="Right" VerticalAlignment="Center" IsHitTestVisible="False">
+                          <TextBlock x:Name="AccessMode" VerticalAlignment="Center" Foreground="#275B89" FontWeight="Medium" FontSize="12" AutomationProperties.AutomationId="AccessMode"/>
+                        </Border>
+                    </Grid>
+                    <Border Grid.Column="1" x:Name="NoProjects" CornerRadius="6" Background="#F5F7FB" Padding="12,8">
+                      <TextBlock x:Name="ProjectHint" Classes="hint" TextWrapping="Wrap"/>
+                    </Border>
+                  </Grid>
+                  <StackPanel x:Name="BindingSection" IsVisible="False" Spacing="10">
+                    <Border Height="1" Background="#E4EAF0"/>
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Classes="section" Text="{desktop:Tr '本机目录绑定'}"/>
+                        <TextBlock x:Name="BindingCount" FontSize="12" Foreground="#52647A" VerticalAlignment="Center"/>
+                      </StackPanel>
+                      <Button x:Name="AccessSettingsButton" Grid.Column="1" Classes="pill action overviewAction"
+                              Click="ShowAccessSettings" AutomationProperties.Name="{desktop:Tr '目录设置'}" AutomationProperties.AutomationId="AccessSettingsButton">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                          <TextBlock Text="{desktop:Tr '目录设置', English='Settings'}" VerticalAlignment="Center"/>
+                          <Path Width="7" Height="10" Stretch="Uniform" Stroke="{Binding $parent[Button].Foreground}" StrokeThickness="1.5" VerticalAlignment="Center" Data="M2,2 L7,7 L2,12"/>
+                        </StackPanel>
+                      </Button>
+                      <Button x:Name="BrowseButton" Grid.Column="2" Classes="primary overviewAction directoryAction" Click="ChooseFolder" AutomationProperties.Name="{desktop:Tr '添加目录'}" AutomationProperties.AutomationId="BrowseButton">
+                        <Grid ColumnDefinitions="Auto,*">
+                          <Path Data="M3.5,7 H10.5 M7,3.5 V10.5"/>
+                          <TextBlock Grid.Column="1" Text="{desktop:Tr '添加目录'}" VerticalAlignment="Center"/>
+                        </Grid>
+                      </Button>
+                    </Grid>
+                    <StackPanel>
+                      <TextBlock x:Name="EmptyBindings" Classes="hint" Text="{desktop:Tr '尚未绑定目录。选择此项目在本机使用的文件夹。'}" TextWrapping="Wrap"/>
+                      <ItemsControl x:Name="BoundDirectories" AutomationProperties.AutomationId="BoundDirectories">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="desktop:DirectoryRow">
+                            <Grid ColumnDefinitions="32,*,Auto" ColumnSpacing="10" Margin="0,5">
+                              <Border Width="32" Height="32" CornerRadius="6" VerticalAlignment="Center" Background="#F0F4F8">
+                                <Path Width="15" Height="13" Stroke="#174E9D" StrokeThickness="1.5" Stretch="Uniform" Data="M1,4 L8,4 L10,7 L22,7 L22,19 L1,19 Z"/>
+                              </Border>
+                              <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Text="{Binding FolderName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Classes="hint" Text="{Binding Binding.LocalPath}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Binding.LocalPath}"/>
+                              </StackPanel>
+                              <Button Grid.Column="2" Classes="pill action overviewAction directoryAction" Click="RemoveDirectory"
+                                      AutomationProperties.Name="{Binding UnlinkName}"
+                                      AutomationProperties.AutomationId="UnbindDirectoryButton">
+                                <Grid ColumnDefinitions="Auto,*">
+                                  <Path Data="M3.5,3.5 L10.5,10.5 M10.5,3.5 L3.5,10.5"/>
+                                  <TextBlock Grid.Column="1" Text="{desktop:Tr '解除绑定'}" VerticalAlignment="Center"/>
+                                </Grid>
+                              </Button>
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="#F5F7FB" BorderBrush="#DCE4EF" BorderThickness="0,1,0,0" Padding="15,8">
+          <Grid ColumnDefinitions="14,*,Auto,Auto" ColumnSpacing="8">
+            <Path Width="13" Height="10" VerticalAlignment="Center" Stroke="#52647A" StrokeThickness="1.5" Stretch="Uniform" Data="M1,1 L19,1 L19,13 L1,13 Z M2,9 L18,9"/>
+            <TextBlock x:Name="Message" Grid.Column="1" Classes="hint" VerticalAlignment="Center" Text="{desktop:Tr '关闭窗口后继续在托盘运行'}" TextWrapping="Wrap" AutomationProperties.AutomationId="Message"/>
+            <Button Grid.Column="2" Classes="language" MinHeight="24" Padding="6,0" FontSize="12" VerticalAlignment="Center"
+                    Content="{desktop:Tr 设置, English='Settings'}" Click="OpenAppPreferences" AutomationProperties.AutomationId="AppPreferencesButton"/>
+            <TextBlock x:Name="DesktopVersion" Grid.Column="3" Classes="hint" VerticalAlignment="Center" AutomationProperties.AutomationId="DesktopVersion"/>
+          </Grid>
+        </Border>
+      </Grid>
+    </Decorator>
+    <Border x:Name="Windows10Frame"/>
+  </Panel>
+</Window>
