@@ -1,0 +1,51 @@
+name: Publish prebuilt Core image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version, for example 1.0.0
+        required: true
+      archive_sha256:
+        description: SHA-256 of the locally tested Linux amd64 image archive
+        required: true
+      image_id:
+        description: Verified docker image ID, including sha256 prefix
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: core-registry-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      ARCHIVE_SHA: ${{ inputs.archive_sha256 }}
+      EXPECTED_ID: ${{ inputs.image_id }}
+    steps:
+      - name: Verify release asset and publish its existing image
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$ARCHIVE_SHA" =~ ^[a-f0-9]{64}$ && "$EXPECTED_ID" =~ ^sha256:[a-f0-9]{64}$ ]]
+          archive="nodikarta-core-$VERSION-linux-amd64.tar.gz"
+          image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/nodikarta-core:$VERSION"
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" --pattern "$archive"
+          printf '%s  %s\n' "$ARCHIVE_SHA" "$archive" | sha256sum -c -
+          docker load --input "$archive"
+          test "$(docker image inspect "$image" --format '{{.Id}}')" = "$EXPECTED_ID"
+          test "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = linux/amd64
+          test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$VERSION"
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$image"
+          docker pull "$image"
+          test "$(docker image inspect "$image" --format '{{.Id}}')" = "$EXPECTED_ID"
+          docker image inspect "$image" --format '{{index .RepoDigests 0}}' >> "$GITHUB_STEP_SUMMARY"
