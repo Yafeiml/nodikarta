@@ -7,25 +7,22 @@
 
 [English](README.md) · 简体中文
 
-脉络让不同 AI 客户端共用同一个项目的记忆。把一次决定、当时的依据和用到的文件版本存下来。换一台电脑、开一个新聊天，仍然可以问清当时选了什么、为什么选，以及这个决定今天是否适用。
+我希望重启开发机调试程序时，负责回客户消息的 AI 还能照常工作。写代码、查资料、做运营、做客服，这些活本来就可以分到几台电脑上。麻烦在于，产品要帮谁解决什么问题、某个功能为什么这样设计，往往只有开发机上的那段聊天说得清。换到另一台电脑，又得从头讲一遍。
 
-例如，旧海报采用了第一版 Logo，印样单记录了选择它的理由。后来橱窗电子屏采用了第二版 Logo。两个决定都可以查到，各自引用的原件也可以按当时的版本下载。
+这就是我做脉络的初衷。把项目记录放在一台常开的 **Core** 服务器上，每台电脑上的 AI 都能按授权查到同一份资料。比如，开发这边修好了 CSV 导出时丢备注的问题，AI 记下「复测通过，还没发布」和对应的测试记录。哪怕我出差带走了开发机，运营电脑上的 AI 也能据此起草下一版的更新说明，客服电脑上的 AI 则知道，今天还不能跟客户说「已经修好了」。
 
 ## 它如何工作
 
-| 组件 | 职责 |
-| --- | --- |
-| **Core** · Linux x86-64 容器及 PostgreSQL | 保存项目知识、修订历史和版本化附件。管理员在网页上创建项目、配对设备，并按项目授予读写权限。 |
-| **Edge** · Windows x64 桌面客户端 | 连接 Core，把本机目录绑定到项目，通过模型上下文协议（MCP）向 AI 客户端提供工具。Core 离线时，支持排队的知识提交可暂存在本机。 |
-| **你使用的 AI 客户端** | 用自己的模型整理、查询项目资料。随 Edge 提供的 Skills 涵盖项目初始化、找回上下文、保存知识和依据、共享素材及处理反馈。 |
+- **Core** 运行在 Linux x86-64 主机上，用 PostgreSQL 保存项目知识、修订历史和版本化附件。管理员在网页上决定每台设备可以读写哪些项目。
+- **Edge** 装在各台 Windows x64 电脑上。把电脑和 Core 配对，再把一个本机目录绑定到项目。在这个目录里开聊天，AI 客户端就能通过 Edge 提供的 MCP 工具查询或提交项目知识。
 
-不同电脑上的不同目录可以指向同一个 Core 项目。每台电脑分别取得设备授权、绑定本机目录。聊天从绑定目录打开后，Edge 按项目授权提供可用工具。
+各台电脑做什么，由你安排。它们的目录名称和内容都可以不同。客服电脑可以只绑定一个空目录，给它这个项目的只读权限就够了。
 
 ## 快速开始
 
 ### 1. 启动 Core
 
-在装有 Git、Docker 和 Compose 插件的 Linux x86-64 主机上，把部署文件放入一个新目录，后续升级继续使用该目录。Compose 会拉取预先构建的镜像 `ghcr.io/yafeiml/nodikarta-core:1.0.0`。
+选一台开发机关机后仍会在线的主机。在装有 Git、Docker 和 Compose 插件的 Linux x86-64 主机上执行以下命令。Compose 会拉取 `ghcr.io/yafeiml/nodikarta-core:1.0.0` 并启动 PostgreSQL。请保留部署目录，后续升级还会用到。
 
 ```sh
 git clone --branch v1.0.0 --depth 1 https://github.com/Yafeiml/nodikarta.git
@@ -38,50 +35,49 @@ sudo docker compose up -d --no-build
 sudo docker compose logs --tail=50 core
 ```
 
-在该主机打开 `http://127.0.0.1:8080/`，用 Core 容器日志中的首次安装码创建管理员账号。默认部署包含 PostgreSQL。若 Windows 电脑与服务器是两台设备，请为 Core 配置这台电脑可以访问的地址。远程访问、复用已有数据库和备份均见部署指南。[Core 部署指南](deploy/public/README.zh-CN.md)
+在这台主机上打开 `http://127.0.0.1:8080/`，用 Core 日志中的一次性首装码创建管理员账号。默认地址只在本机可用。给其他电脑配对前，先为它们配置能访问的 Core 地址。远程访问、备份和复用已有 PostgreSQL 的方法见[中文部署指南](deploy/public/README.zh-CN.md)。
 
-### 2. 配对 Windows 设备
+### 2. 接入一台 Windows 电脑
 
-1. 在 Core 网页的「项目」中创建一个项目。进入「设备 → 添加设备」，为这个项目选择「读写」并生成配对码。
-2. 在 [1.0.0 发布页](https://github.com/Yafeiml/nodikarta/releases/tag/v1.0.0)下载 `Nodicarta-Edge-1.0.0-win-x64-setup.exe`，用当前 Windows 账号运行。打开 Edge，填入 Core 地址和设备配对码。配对码有效期为十分钟，成功兑换后即失效。
-3. 在 Edge 选中该项目，点击「添加目录」，选择你要在 AI 客户端打开的本机文件夹。
-4. 打开「智能体接入」，接入 Codex，再**从已绑定的目录新建聊天**。如果客户端提示信任工作区或重新加载 MCP，按提示操作。Edge 也提供 Claude Code、Antigravity 等客户端的接入入口。
+1. 在 Core 的「项目」里创建项目。进入「设备 → 添加设备」，给第一台电脑授予该项目的「读写」权限，再生成配对码。配对码十分钟内有效，只能兑换一次。
+2. 下载并运行 [Windows x64 安装包](https://github.com/Yafeiml/nodikarta/releases/download/v1.0.0/Nodicarta-Edge-1.0.0-win-x64-setup.exe)。打开 Edge，填入 Core 地址和配对码。
+3. 在 Edge 选中项目，点「添加目录」，选择你准备在 AI 客户端里打开的文件夹。
+4. 到「智能体接入」中接入 Codex，再从绑定的目录新建聊天。如果客户端提示信任工作区或重新加载 MCP，按提示操作。这里也有 Claude Code 和 Antigravity 的接入入口。
 
-打开 Edge 主窗口底部的「设置」，可选择「登录时启动 Edge」。开启后，下次登录 Windows 时 Edge 会静默进入托盘，点托盘图标才打开主窗口。同页的「自动更新 Edge」控制安装版应用更新；「通用 Skills」中的开关单独控制本机 Skills 的更新。
+### 3. 换台电脑问同一个项目
 
-### 3. 测试新聊天能否接手
+可以用一个测试项目试试。在开发机的绑定目录里新建 `export-test.md`，把下面这条示例记录放进去。
 
-在绑定目录内创建 `print-proof.md`，写入下面这条示例依据。
+> 当前正式版导出 CSV 时，客户备注会丢掉第二行。开发版已经修复，用两行备注复测通过，修复尚未发布。
 
-> A 版海报纸样采用单色 Logo。缩小到 18 毫米时，两条笔画之间的留白仍然清晰。
+在开发机的聊天里，请 AI 把结论记下来。
 
-在第一个聊天里保存这个决定。
+> 把这次 CSV 导出的复测结果和发布状态记到脉络，注明依据是 export-test.md，并告诉我 Core 保存的修订版本。
 
-> 把这次海报定稿决定记到脉络，引用 print-proof.md 作为依据，告诉我已保存的条目和修订版本。
+收到 Core 的保存回执后，把第二台电脑和 Core 配对，给它同一项目的「只读」权限。在 Edge 里绑定一个空目录，接入你要用的 AI 客户端。从这个目录开一个新聊天，问它一个客服会遇到的问题。
 
-收到 Core 的保存回执后，从同一个绑定目录开一个新聊天，试着这样问。
+> 客户说导出的备注少了一行。今天我该怎么答复他？依据是什么？
 
-> 上次纸质海报定稿用了哪个标志，为什么选它？给出依据。
+看它能否分清「正式版仍有问题」和「开发版复测通过」，并指出依据是 `export-test.md`。如果手边只有一台电脑，也可以先在原绑定目录开一个新聊天试问。引用路径指向开发机上的那份记录。如果还要让别的电脑下载测试报告，可以把 PDF 作为项目附件发布。
 
-新聊天可以找回刚才的决定并指出证据来源。要测试跨设备接手，可以给第二台电脑授权同一个项目，在那台电脑绑定一个空目录后再问。来源路径用于追溯原始资料；需要另一台电脑也能下载文件时，请将支持格式的原件发布为项目附件。
+## 日常使用
 
-## 用在已有项目
-
-- **整理已有资料。** 说「初始化知识库」，AI 会从当前目录的资料中整理决定和依据；需要先核对内容时，可以要求「先给我预览」。
-- **保留设计原件。** 可以发布 PNG、JPEG、WebP、SVG 或 PDF，单个原件最大 8 MiB。决定可以引用附件的指定版本，发布新版本后仍可下载旧版。
-- **离线后继续同步。** Core 恢复连接后，Edge 会重试已排队的知识提交。「已在本机排队」表示尚待同步，收到 Core 回执后即可按条目和修订版本查询。
+- **从已有项目开始。** 在绑定目录的聊天里说「初始化知识库，先给我看看准备整理哪些内容」，让 AI 从现有资料里找出决定和依据。
+- **留住定稿时用的原件。** 纸质海报可以关联打样时确认的单色 Logo。下次活动上传了彩色新版，旧稿用的那一版仍然能下载。支持 PNG、JPEG、WebP、SVG、PDF，单个附件最大 8 MiB。
+- **确认资料是否已经同步。** Core 暂时连不上时，支持离线排队的知识提交会留在本机，恢复连接后由 Edge 重试。收到 Core 回执后，其他获授权设备就能查到这一版。
+- **让常用电脑登录后就绪。** 在 Edge「设置」中开启「登录时启动 Edge」，登录 Windows 后它会静默进入托盘，点击图标即可打开窗口。「自动更新 Edge」控制应用更新，已安装的技能则由「通用 Skills」里的开关控制。
 
 ## 从源码构建
 
-要在本机构建 Core，请在有 Linux 容器引擎的开发机上，进入仓库根目录执行 `docker build -t nodicarta-core:dev .`。
+构建 Core 时，在装有 Linux 容器引擎的开发机上，从仓库根目录执行 `docker build -t nodicarta-core:dev .`。
 
-要开发 Windows x64 客户端，请安装 .NET 10 SDK，再用 PowerShell 构建桌面端和 CLI/MCP。
+构建 Edge 时，在 Windows x64 上安装 .NET 10 SDK，再用 PowerShell 构建桌面和 CLI 项目。
 
 ```powershell
 dotnet build src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj -c Release
 dotnet build src/ProjectHub.Edge/ProjectHub.Edge.csproj -c Release
 ```
 
-Windows 发行包还包含原生 MCP 启动器。用 `./deploy/windows/Publish-Edge.ps1 -Desktop` 构建桌面 ZIP 时，需要 PowerShell 7 和目标为 `x86_64-w64-mingw32` 的 MinGW-w64 GCC。
+桌面 ZIP 还包含一个原生 MCP 启动器。用 `./deploy/windows/Publish-Edge.ps1 -Desktop` 打包时，需要 PowerShell 7 和目标为 `x86_64-w64-mingw32` 的 MinGW-w64 GCC。
 
 [内置 Skills](skills/) · [Core 源码](src/ProjectHub.Core/) · [Edge 桌面源码](src/ProjectHub.Edge.Desktop/) · [Edge MCP 与 CLI 源码](src/ProjectHub.Edge/) · [MIT 许可证](LICENSE)

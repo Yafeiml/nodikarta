@@ -7,25 +7,22 @@
 
 English · [简体中文](README.zh-CN.md)
 
-Nodicarta gives your AI clients a shared memory for each project. Save a decision with its evidence and the exact files it refers to. In a fresh chat, even on another computer, ask what was decided, why, and whether it still applies.
+I want to be able to reboot my development PC without taking customer support offline. One computer can run an AI assistant that writes code. Others can research an issue, draft release notes or answer customers. But if the reasons behind a feature live in a chat on my PC, I end up explaining them all over again. Sometimes that means going all the way back to who we're building for and what they need.
 
-For example, a print poster can reference version 1 of a logo and the proof that explains the choice. Later, a display design can adopt version 2. Both decisions remain searchable, and either chat can retrieve the original file used for its own design.
+That's why I built Nodicarta. It keeps a shared project record on a **Core** server that the other computers can reach. Say a developer fixes a bug that drops notes from CSV exports. The development assistant records that the fix passed testing but hasn't shipped. I can take the laptop on a trip. The assistant on the operations PC has what it needs to draft the next release notes, and the one handling support can tell a customer what to expect from the version they're using today.
 
 ## How it works
 
-| Component | What it does |
-| --- | --- |
-| **Core** · Linux x86-64 container and PostgreSQL | Stores project knowledge, revision history and versioned attachments. Its web interface manages projects, devices and their read or write access. |
-| **Edge** · Windows x64 desktop app | Pairs the device with Core, binds local folders to projects and exposes project tools through the Model Context Protocol (MCP). Eligible knowledge writes can queue locally while Core is offline. |
-| **Your AI client** | Uses its own model to work with project knowledge. The bundled Skills cover project initialization, context recovery, evidence-backed updates, shared assets and feedback. |
+- **Core** runs on a Linux x86-64 host with PostgreSQL. It stores project knowledge, revision history and versioned attachments. In the web interface, you choose which projects each device can read or write.
+- **Edge** runs on each Windows x64 PC. Pair the PC with Core and bind a local folder to a project. From a chat in that folder, your AI client uses Edge's Model Context Protocol (MCP) tools to look up or contribute project knowledge.
 
-Different folders on different computers can point to the same Core project. Each computer needs its own device grant and folder binding. When a chat opens in a bound folder, Edge supplies the tools allowed for that project.
+You decide which work runs on each computer. The folders can have different names and contents. A support PC can start with an empty folder and read-only access to the project.
 
 ## Quick start
 
 ### 1. Start Core
 
-On a Linux x86-64 host with Git, Docker and the Compose plugin, copy the deployment files to a new directory you will keep across upgrades. Compose pulls the prebuilt `ghcr.io/yafeiml/nodikarta-core:1.0.0` image.
+Choose a host that will stay up when your development PC is off. On Linux x86-64 with Git, Docker and the Compose plugin, run the following commands. Compose pulls `ghcr.io/yafeiml/nodikarta-core:1.0.0` and starts PostgreSQL. Keep the deployment directory for future upgrades.
 
 ```sh
 git clone --branch v1.0.0 --depth 1 https://github.com/Yafeiml/nodikarta.git
@@ -38,50 +35,49 @@ sudo docker compose up -d --no-build
 sudo docker compose logs --tail=50 core
 ```
 
-Use the one-time setup code from the Core log to create the administrator account at `http://127.0.0.1:8080/` on that host. The default deployment includes PostgreSQL. To connect a Windows PC to a separate server, configure a Core address reachable from that PC. The deployment guide covers remote access, using an existing database and backups. [Core deployment guide](deploy/public/README.md)
+Open `http://127.0.0.1:8080/` on that host. Use the one-time setup code from the Core log to create your administrator account. The default address is local to the host. Before pairing another computer, give it a Core address it can reach. The deployment guide covers remote access, backups and using an existing PostgreSQL database. [Core deployment guide](deploy/public/README.md)
 
-### 2. Pair a Windows device
+### 2. Connect a Windows PC
 
-1. In Core, open **Projects** and create a project. Under **Devices → Add device**, grant that project **read/write** access and generate a pairing code.
-2. Download `Nodicarta-Edge-1.0.0-win-x64-setup.exe` from the [1.0.0 release](https://github.com/Yafeiml/nodikarta/releases/tag/v1.0.0) and run it as your Windows user. Open Edge and enter the Core address and device pairing code. The pairing code is single-use and expires after ten minutes.
-3. Select the project in Edge, choose **Add folder** and pick the local folder you will open in your AI client.
-4. Open **AI clients**, connect Codex, then start a **new chat from the bound folder**. Complete any workspace trust or MCP reload prompt in the client. Edge also offers setup for clients such as Claude Code and Antigravity.
+1. In **Projects**, create a project. In **Devices → Add device**, give the first PC **read/write** access to that project and generate a pairing code. The code is valid for ten minutes and can be used once.
+2. Download and run the [Windows x64 installer](https://github.com/Yafeiml/nodikarta/releases/download/v1.0.0/Nodicarta-Edge-1.0.0-win-x64-setup.exe). Open Edge, enter the Core address and pair with the code.
+3. In Edge, select the project and choose **Add folder**. Pick the folder you'll open in your AI client.
+4. Under **AI clients**, connect Codex, then start a new chat from the bound folder. Accept the client's workspace trust or MCP reload prompt if one appears. Edge also has setup entries for Claude Code and Antigravity.
 
-Open **Settings** at the bottom of the Edge window to choose **Start Edge when I sign in**. With it enabled, signing in to Windows starts Edge in the notification area and leaves the main window closed. Click the tray icon to open it. **Update Edge automatically** controls application updates for the installed release; the separate **Skills** setting controls updates to your installed Skills.
+### 3. Ask from a second computer
 
-### 3. Test a handoff between chats
+Try this in a test project. On the development PC, create `export-test.md` in the bound folder with the following sample result.
 
-In the bound folder, create `print-proof.md` with this example evidence.
+> In the stable release, CSV export drops the second line of a customer's notes. The fix passed the two-line test in the development build. It hasn't shipped yet.
 
-> Poster proof A was approved with the monochrome logo. The gap between the strokes stayed legible at 18 mm.
+Ask the development assistant to save the finding.
 
-In the first chat, save the decision.
+> Record the CSV export test result and release status in Nodicarta. Cite export-test.md and tell me which revision Core saved.
 
-> Save the approved poster decision to Nodicarta. Cite print-proof.md as evidence and give me the saved entry and revision.
+Once Core confirms the save, pair a second PC with Core and grant it **read-only** access to the same project. In Edge, bind an empty local folder and connect the AI client you'll use there. Start a fresh chat from that folder with a support question.
 
-Once the client reports a Core receipt, open a second chat from the same bound folder.
+> A customer says their exported notes are missing a line. What can I tell them today, and what are we basing that on?
 
-> Which logo did we approve for the printed poster, and why? Show me the source.
+The reply should distinguish the released version from the tested fix and cite `export-test.md`. You can also try this in a new chat on the first PC. The citation points to the note on the development PC. To share a downloadable test report, publish a PDF as a project attachment.
 
-The second chat can use the saved decision and name its source. To try the same test across computers, grant a second device access to the project and bind an empty folder there. A source path identifies the original evidence; to make the file itself available for download, publish a supported attachment to the project.
+## Using it day to day
 
-## Working with an existing project
-
-- **Bring existing work into memory.** Ask “Initialize this project's knowledge base” to extract decisions and references from the current folder. Ask for a preview first if you want to review the proposed entries.
-- **Keep design originals.** Publish a PNG, JPEG, WebP, SVG or PDF (up to 8 MiB per file), then link its version to a decision. A later revision keeps the earlier original addressable.
-- **Reconnect after time offline.** Edge retries queued knowledge writes when Core is reachable. A local queue acknowledgement means the write is pending; a Core receipt identifies the saved revision.
+- **Start with an existing project.** From a bound folder, ask “Initialize this project's knowledge base. Show me a preview first.” The assistant can use your existing material to identify decisions and their sources.
+- **Keep the file that went with the decision.** A print poster can point to the monochrome logo approved on its proof. Publish a color logo for a later campaign and the original is still downloadable by version. Supported attachments are PNG, JPEG, WebP, SVG and PDF, up to 8 MiB each.
+- **Check what has synced.** If Core is unreachable, Edge can queue eligible knowledge writes on the PC and retry when Core is back. Once you have a Core receipt, the saved revision is available to other authorized devices.
+- **Set up a PC that stays on duty.** In Edge **Settings**, **Start Edge when I sign in** starts Edge in the Windows notification area. Click the tray icon to open the window. **Update Edge automatically** controls app updates. The **Skills** tab has its own update setting.
 
 ## Build from source
 
-For a local Core build, run `docker build -t nodicarta-core:dev .` from the repository root on a development machine with a Linux container engine.
+For Core, run `docker build -t nodicarta-core:dev .` from the repository root on a development machine with a Linux container engine.
 
-For Edge development on Windows x64, install the .NET 10 SDK. Build the desktop and CLI/MCP projects with PowerShell:
+For Edge, install the .NET 10 SDK on Windows x64 and build the desktop and CLI projects in PowerShell.
 
 ```powershell
 dotnet build src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj -c Release
 dotnet build src/ProjectHub.Edge/ProjectHub.Edge.csproj -c Release
 ```
 
-The Windows distribution also includes a small native MCP launcher. Building the desktop ZIP with `./deploy/windows/Publish-Edge.ps1 -Desktop` requires PowerShell 7 and MinGW-w64 GCC targeting `x86_64-w64-mingw32`.
+The desktop ZIP also includes a native MCP launcher. To build it with `./deploy/windows/Publish-Edge.ps1 -Desktop`, use PowerShell 7 and MinGW-w64 GCC targeting `x86_64-w64-mingw32`.
 
 [Bundled Skills](skills/) · [Core source](src/ProjectHub.Core/) · [Edge desktop source](src/ProjectHub.Edge.Desktop/) · [Edge MCP and CLI source](src/ProjectHub.Edge/) · [MIT license](LICENSE)
