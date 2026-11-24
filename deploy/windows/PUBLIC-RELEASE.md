@@ -38,6 +38,16 @@ The installed MCP command keeps the same path across releases. A 1.0.x launcher 
 
 ## Qualification
 
+For a GitHub draft rehearsal, test the original installer downloaded from the draft first. After it passes, run `Sign-EdgeRelease.ps1` locally with that installer, its version, and `-RehearsalTag edge-rehearsal-v1.1.0-123`. The numeric suffix identifies the rehearsal and the version must match the installer. The signed URL points to the exact rehearsal tag under `Yafeiml/nodikarta`. The release coordinator uploads the returned `Manifest` and `Signature` files (`nodicarta-edge-rehearsal-win-x64.json` and its `.sig`) only to that draft.
+
+Restore a clean, offline x64 Windows VM with PowerShell 7 and Node. Copy in the original draft installer, a **lower-version** public installer, and `tests/windows-draft-installer.ps1` with its sibling `windows-draft-session.cjs` and `windows-mcp.cjs`. Verify the locally computed candidate hash against the draft and the baseline hash against the published release. Run from the checkout root inside that disposable VM:
+
+```powershell
+./tests/windows-draft-installer.ps1 -Candidate <draft-exe> -CandidateSha256 <verified-draft-sha256> -Baseline <older-public-exe> -BaselineSha256 <published-sha256> -GuestUuid <vm-uuid> -Evidence <receipt.json>
+```
+
+The receipt covers installation in public mode, an actual `/UPDATE`, recovery from a failed update, MCP sessions, pairing and directory bindings. Exercise automatic downloads and signature verification separately with the test channel below.
+
 For an isolated two-version trial, use a loopback HTTP feed and an independent ephemeral P-256 key pair outside the source tree. Pass `-TestFeed`, `-TestPublicKeyFile`, `-TestPrivateKeyFile` and a temporary `-OutputDirectory` to the publish command for each version. The test installer uses its own shell folders and installation record under `NODICARTA_EDGE_SETUP_TEST_HOME`. Test manifests point to the versioned installer under `v<version>/` on the loopback server. Keep those assets on the test channel.
 
 Before publishing, verify the actual installed version and startup preference, the fixed MCP command across an update, corrupted signatures and installers, rollback after a failed desktop startup, and retention of linked directories and unsent work. After publishing, download the feed, signature and installer from the public URLs and verify the same signed bytes.

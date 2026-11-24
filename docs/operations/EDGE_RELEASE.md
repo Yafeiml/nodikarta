@@ -25,7 +25,7 @@ $dir = Join-Path $env:TEMP "nodicarta-$tag-qualification"
 python tools/release/edge_release.py fetch --tag $tag --commit $commit --dir $dir
 ```
 
-Use the downloaded installer for an isolated Windows install, upgrade and rollback. Run the CLI/MCP and start the desktop from the downloaded Linux packages. Check the package versions and any regressions that prompted the release. Keep the downloads and their receipt together. If qualification fails, leave the release in draft and fix the source under a new tag.
+Use the downloaded installer for an isolated Windows install, upgrade and rollback. The [installer regression test](../../tests/windows-draft-installer.ps1) runs against the candidate and a previous installer in a disposable Windows VM. Run the CLI/MCP and start the desktop from the downloaded Linux packages. Check the package versions and any regressions that prompted the release. Keep the downloads and their receipt together. If qualification fails, leave the release in draft and fix the source under a new tag.
 
 After accepting those exact files, take the receipt SHA-256 printed by `fetch` and run:
 

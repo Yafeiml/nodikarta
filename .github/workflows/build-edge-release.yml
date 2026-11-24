@@ -89,13 +89,16 @@ jobs:
           }
           & 7z.exe x -y "-o$env:RUNNER_TEMP" $archive | Out-Null
           $mingw = Join-Path $env:RUNNER_TEMP 'w64devkit/bin'
-          $nsis = Join-Path $pf86 'NSIS'
-          if (!(Test-Path -LiteralPath (Join-Path $nsis 'makensis.exe'))) {
-            choco install nsis --version=3.10 --yes --no-progress
+          $nsisZip = Join-Path $env:RUNNER_TEMP 'nsis-3.11.zip'
+          Invoke-WebRequest -Uri 'https://github.com/tauri-apps/binary-releases/releases/download/nsis-3.11/nsis-3.11.zip' -OutFile $nsisZip
+          if ((Get-FileHash -Algorithm SHA256 $nsisZip).Hash -ne 'c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1') {
+            throw 'NSIS archive hash mismatch.'
           }
+          Expand-Archive -LiteralPath $nsisZip -DestinationPath $env:RUNNER_TEMP
+          $nsis = Join-Path $env:RUNNER_TEMP 'nsis-3.11'
           $env:PATH = "$mingw;$nsis;$env:PATH"
-          if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32' -or (makensis.exe /VERSION) -notmatch '^v3\.10$') {
-            throw 'Expected x64 MinGW-w64 and NSIS 3.10.'
+          if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32' -or (makensis.exe /VERSION) -ne 'v3.11') {
+            throw 'Expected x64 MinGW-w64 and NSIS 3.11.'
           }
           Get-Command cl.exe,link.exe,rc.exe,windres.exe | Select-Object Name,Source
           & ./deploy/windows/Build-EdgeCandidate.ps1 -Version $env:VERSION -OutputDirectory "$env:RUNNER_TEMP/candidates"
