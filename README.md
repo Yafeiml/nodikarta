@@ -1,87 +1,87 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="src/ProjectHub.Core/wwwroot/brand-mark.svg">
-  <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="64" height="64" alt="">
+  <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="64" height="64" alt="Nodicarta">
 </picture>
 
 # Nodicarta
 
 English · [简体中文](README.zh-CN.md)
 
-**If ten AI agents each do their job well, will their work still add up to the product you meant to build?**
+**When AI is capable across almost everything on a computer, we are not going to stop at using it to write code.**
 
-When you work with one assistant, you can explain a change of direction in one conversation. Once researchers, developers, writers and support staff each have an agent on a different machine, someone has to explain the change to all of them. Leave out the words “pilot customers only” and the engineers can ship exactly what you asked for while a beautifully written announcement promises it to everyone.
+Building a real product today goes far beyond engineering. Testing, visual assets, online promotion, and round-the-clock customer support can all be handled by AI agents.
 
-I built Nodicarta so **the project could have a memory of its own**. Who are we building for? What did we promise them? What did we learn that made us change our minds? People and agents can record those decisions with the evidence and the exact files they relied on. Months later, someone working with a different model on another machine can draw on those earlier trade-offs to make a call nobody thought to spell out.
+At first, you might try running all of those agents on your main development machine. Reality gets in the way fast: **your desktop gets shut down at night, you grab a laptop to travel or work on the go, and your online promotion and customer support cannot afford to go offline with it.** Deploying dedicated agents onto separate hosts—each handling its own role continuously—quickly becomes the natural way to work.
 
-Imagine building a field notebook. Its first manual said photos stayed on the device. During a field trial, surveyors asked to send *a few photos they picked* to a colleague, so the team added sharing. Now a design agent has to decide whether inviting a teammate should upload the whole album by default. The trial notes and the two decisions give the designer good reason to leave sharing up to the photographer. How long a shared photo should be kept is still an open question for the team.
+That is right where the real pain begins:
 
-## How it works
+- Newly deployed agents on other hosts don't have the source code and start knowing **nothing** about your project;
+- You get stuck acting as a **human router**, copying background notes, product facts, images, and approved design files back and forth across machines;
+- Worst of all, **every time development moves forward, the agents on every other device instantly fall behind**—engineering updates a rule or ships a change, while your promotion agent on another host is still pitching old behavior and your support agent is still giving users last week's answer, forcing you to make the rounds and re-align every machine by hand.
 
-- **Core** runs on a Linux x86-64 host with PostgreSQL. It stores project knowledge, revision history and versioned attachments. In the web interface, you choose which projects each device can read or write.
-- **Edge** runs on each Windows x64 PC. Pair the PC with Core and bind a local folder to a project. From a chat in that folder, your AI client uses Edge's Model Context Protocol (MCP) tools to look up or contribute project knowledge.
+**Nodicarta was built to end that cycle: it gives your project an always-on, living shared memory that grows alongside your work—so agents across different machines stay in sync around the same project, without trapping you in the middle.**
 
-You decide which work runs on each computer. The folders can have different names and contents. A support PC can start with an empty folder and read-only access to the project.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/design/workflow/workflow-en-dark.svg">
+  <img src="docs/design/workflow/workflow-en-light.svg" width="100%" alt="Nodicarta core mechanism diagram: shared project memory connecting Dev, Testing, Promo & Ops, and Support agents">
+</picture>
 
-## Quick start
+---
 
-### 1. Start Core
+## Why Existing "Agent Memory" Tools Don't Fit
 
-Choose a host that will stay up when your development PC is off. On Linux x86-64 with Git, Docker and the Compose plugin, run the following commands. Compose pulls `ghcr.io/yafeiml/nodikarta-core:1.0.0` and starts PostgreSQL. Keep the deployment directory for future upgrades.
+There is no shortage of open-source projects about "AI memory," yet most are designed for a very different job: **helping a single assistant remember your personal preferences or fragments of past chats.**
 
-```sh
-git clone --branch v1.0.0 --depth 1 https://github.com/Yafeiml/nodikarta.git
-sudo mkdir -p /home/docker/nodikarta
-sudo cp -a nodikarta/deploy/public/. /home/docker/nodikarta/
-cd /home/docker/nodikarta
-sudo sh init.sh
-sudo docker compose pull
-sudo docker compose up -d --no-build
-sudo docker compose logs --tail=50 core
-```
+Running development, promotion, support, and testing across multiple hosts around an evolving product brings a fundamentally different set of problems:
 
-Open `http://127.0.0.1:8080/` on that host. Use the one-time setup code from the Core log to create your administrator account. The default address is local to the host. Before pairing another computer, give it a Core address it can reach. The deployment guide covers remote access, backups and using an existing PostgreSQL database. [Core deployment guide](deploy/public/README.md)
+- **You don't need old chat fragments—you need every machine aligned on what is true right now**  
+  A living project changes every day. Dumping raw conversation history into a search index mixes discarded ideas from last month, tentative guesses, and rules that just took effect today; the faster development moves, the easier it becomes for outward-facing agents to speak with confidence from outdated notes. Nodicarta distinguishes **active decisions, historical facts, verified observations, and open questions**—when a new decision supersedes an old one, other devices read what governs today while keeping the full trail of how the project got there.
 
-### 2. Connect a Windows PC
+- **Cross-machine work depends on images and approved originals, not just text**  
+  Promotion agents need current brand marks, posters, and product visuals; operations and support need approved guides and reference files. Plain-text memory leaves files behind, and cannot tell the difference between "a file sitting in a folder" and "the exact version approved for this release." Nodicarta binds decisions, supporting evidence, and versioned originals together, so an authorized host without source code can trace why a file was chosen and download the exact original it needs.
 
-1. In **Projects**, create a project. In **Devices → Add device**, give the first PC **read/write** access to that project and generate a pairing code. The code is valid for ten minutes and can be used once.
-2. Download and run the [Windows x64 installer](https://github.com/Yafeiml/nodikarta/releases/download/v1.0.0/Nodicarta-Edge-1.0.0-win-x64-setup.exe). Open Edge, enter the Core address and pair with the code.
-3. In Edge, select the project and choose **Add folder**. Pick the folder you'll open in your AI client.
-4. Under **AI clients**, connect Codex, then start a new chat from the bound folder. Accept the client's workspace trust or MCP reload prompt if one appears. Edge also has setup entries for Claude Code and Antigravity.
+- **Participants live beyond the codebase, yet each host needs clear boundaries**  
+  A support or marketing agent running on an always-on server neither needs your source repository nor should ever have permission to alter project memory or peek into other projects. Nodicarta isolates everything by project: a computer without source code—even starting from an empty folder with read-only access—gets the context it needs, while untrusted prompts from external users cannot tamper with the project itself.
 
-### 3. Give a new agent a decision to make
+---
 
-Try this in a test project. In a chat on the development PC, ask the assistant to record the original decision.
+## How It Feels in Practice
 
-> For the first release of Field Notebook, photos stay on the device because field crews sometimes photograph private land. That's what the first manual tells users. Save the decision and its reason to Nodicarta, and tell me which entry and revision Core saved.
+- **Development moves forward; every other host stays in step**  
+  Finish an iteration, revise a product boundary, or sign off on a new visual asset on your dev machine, and let your agent commit the conclusion, its evidence, and the original file to Nodicarta. When your promotion agent drafts copy or your support agent answers users on a remote server, they work directly from the updated reality—knowing clearly what has been verified and can be promised publicly, and what is still under evaluation.
 
-Once Core confirms the save, give the same chat the outcome of the field trial.
+- **Shut down, travel, or switch machines without breaking stride**  
+  Power off your main workstation for the night while support and promotion keep running against the same project memory on an always-on host. Open your laptop on the road, start a fresh chat in a project folder, and your agent picks up right where your desktop left off—latest progress, past trade-offs, and open items intact—without re-explaining the backstory.
 
-> Surveyors in the pilot needed to send selected photos to colleagues. The team approved sharing photos the user picks and confirms. Everything else stays on the device by default. Revise the same entry with the pilot feedback as evidence and keep the original revision.
+- **Real user voices flow straight back from the front line—not from scraping code-repo issues**  
+  Many developers wire AI to watch GitHub Issues and auto-fix bugs, yet everyday users never open tickets in a source repository—their real friction, confusion, and requests surface in **live chats with online support agents** and **replies or inquiries around promotion**. Nodicarta lets frontline support and marketing agents send genuine user feedback—in the user's own words—straight back into the project as they serve people, routing it to the right development endpoint for bounded analysis; once investigated and resolved, the updated conclusion flows right back out so support gives the very next user an accurate answer.
 
-On a second PC with **read-only** access to the project, bind an empty folder in Edge and connect your AI client. Start a fresh chat in that folder and ask this question without copying over the two earlier prompts.
+---
 
-> I'm designing the screen for inviting a colleague to a field crew. What should happen to photos already on the device when the colleague joins? Why did the first manual say photos stayed on the device? Do we have enough evidence to set a retention period for shared photos? Cite the revisions behind your answer.
+## Long-Term Value
 
-Look for three things in the answer. Sharing stays in the user’s hands, the old manual made sense at the time, and the team has yet to decide on a retention period. You can also try this in a fresh chat from the original bound folder.
+Models and client tools change every month, while a meaningful project lives for years. Nodicarta is built for what compounds over the long run:
 
-## Using it day to day
+### 1. Run an always-on, user-connected AI team—even as one builder or a small crew
+Once AI can take on promotion, operations, testing, and support alongside engineering, the bottleneck is no longer whether AI can do any single job—it is **how agents spread across different machines stay coherent like one company**. Rather than another developer script orbiting a code repository, Nodicarta closes the loop **from product development all the way to real users on the front line**: whether your main machine is awake or you are away from your desk, product progress flows outward to promotion and support while real user feedback flows back to drive the next iteration—leaving direction and key decisions firmly in your hands.
 
-- **Start with an existing project.** From a bound folder, ask “Initialize this project's knowledge base. Show me a preview first.” The assistant can use your existing material to identify decisions and their sources.
-- **Keep the file that went with the decision.** A print poster can point to the monochrome logo approved on its proof. Publish a color logo for a later campaign and the original is still downloadable by version. Supported attachments are PNG, JPEG, WebP, SVG and PDF, up to 8 MiB each.
-- **Check what has synced.** If Core is unreachable, Edge can queue eligible knowledge writes on the PC and retry when Core is back. Once you have a Core receipt, the saved revision is available to other authorized devices.
-- **Set up a PC that stays on duty.** In Edge **Settings**, **Start Edge when I sign in** starts Edge in the Windows notification area. Click the tray icon to open the window. **Update Edge automatically** controls app updates. The **Skills** tab has its own update setting.
+### 2. Models and tools will keep turning over; project memory compounds
+Every few months, the sharpest model and the best client tool change again. When your project's reasoning is trapped inside local sessions on individual machines, switching hardware or tools quietly resets your context to zero. When memory belongs to the project itself, models become interchangeable engines while your product trade-offs, user insights, approved originals, and hard-won boundaries accumulate year after year—the stronger future models become, the more leverage that accumulated memory delivers.
 
-## Build from source
+### 3. Answer tomorrow's unforeseen questions, not just sync today's status
+Static handoff notes go stale the moment circumstances shift. Because Nodicarta preserves not only *what* was decided but *what evidence and constraints* drove that choice, an agent or collaborator joining six months or two years later can reason through situations nobody anticipated at the time—seeing which boundaries still hold, which assumptions have changed, and which open questions still call for your judgment.
 
-For Core, run `docker build -t nodicarta-core:dev .` from the repository root on a development machine with a Linux container engine.
+### 4. Start solo across your own machines; grow naturally into shared team memory
+Today, you can self-host Nodicarta to run multiple projects across your own devices with full ownership over data and access boundaries. As a project grows from one person to a team and across functions, that exact same project memory extends naturally into shared institutional context—so newcomers never have to piece history together from scratch, and instead build directly on what has already been learned.
 
-For Edge, install the .NET 10 SDK on Windows x64 and build the desktop and CLI projects in PowerShell.
+---
 
-```powershell
-dotnet build src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj -c Release
-dotnet build src/ProjectHub.Edge/ProjectHub.Edge.csproj -c Release
-```
+## Getting Started
 
-The desktop ZIP also includes a native MCP launcher. To build it with `./deploy/windows/Publish-Edge.ps1 -Desktop`, use PowerShell 7 and MinGW-w64 GCC targeting `x86_64-w64-mingw32`.
+Nodicarta works in two parts: **Core** runs on an always-on host to safeguard your projects' memory, version history, shared originals, and device permissions; **Edge** runs on your workstation, travel laptop, or remote service hosts to connect local folders and your preferred AI clients (Codex, Claude, Antigravity, Cursor, OpenCode, and others) to authorized projects.
 
-[Bundled Skills](skills/) · [Core source](src/ProjectHub.Core/) · [Edge desktop source](src/ProjectHub.Edge.Desktop/) · [Edge MCP and CLI source](src/ProjectHub.Edge/) · [MIT license](LICENSE)
+Start from a brand-new project by recording its first decision, or ask in an existing project folder—“Initialize this project's materials, and show me a preview first”—to let your assistant distill an initial project memory from what you already have.
+
+- **Deploy & connect**: [Core deployment guide](deploy/public/README.md) · [Windows desktop download](https://github.com/Yafeiml/nodikarta/releases/latest) · [Edge desktop guide](docs/operations/WINDOWS_EDGE_DESKTOP.en.md)
+- **Go deeper**: [Bundled Skills](skills/) · [Core source](src/ProjectHub.Core/) · [Edge desktop source](src/ProjectHub.Edge.Desktop/) · [Edge MCP & CLI source](src/ProjectHub.Edge/)
+- **License**: [MIT License](LICENSE)
