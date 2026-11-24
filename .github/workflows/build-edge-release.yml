@@ -83,8 +83,8 @@ jobs:
           Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
 
           $archive = Join-Path $env:RUNNER_TEMP 'w64devkit.7z.exe'
-          Invoke-WebRequest -Uri 'https://github.com/skeeto/w64devkit/releases/download/v2.11.0/w64devkit-x64-2.11.0.7z.exe' -OutFile $archive
-          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ne '54c2bb9962e8a30c8270e34c5efc3d5fee579f53087fa7d435b95fbba2af7b2b') {
+          Invoke-WebRequest -Uri 'https://github.com/skeeto/w64devkit/releases/download/v2.10.0/w64devkit-x64-2.10.0.7z.exe' -OutFile $archive
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ne '18d0a4c71a166f8401ab6305781bec5882b40b5e06ba9807c61cb5f3b3c6325e') {
             throw 'MinGW-w64 archive hash mismatch.'
           }
           & 7z.exe x -y "-o$env:RUNNER_TEMP" $archive | Out-Null
@@ -96,11 +96,23 @@ jobs:
           }
           Expand-Archive -LiteralPath $nsisZip -DestinationPath $env:RUNNER_TEMP
           $nsis = Join-Path $env:RUNNER_TEMP 'nsis-3.11'
-          $env:PATH = "$mingw;$nsis;$env:PATH"
-          if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32' -or (makensis.exe /VERSION) -ne 'v3.11') {
-            throw 'Expected x64 MinGW-w64 and NSIS 3.11.'
+          # w64devkit also contains a development build of makensis.exe.
+          $env:PATH = "$nsis;$mingw;$env:PATH"
+          $gcc = (Resolve-Path (Join-Path $mingw 'gcc.exe')).Path
+          $windres = (Resolve-Path (Join-Path $mingw 'windres.exe')).Path
+          $makensis = (Resolve-Path (Join-Path $nsis 'makensis.exe')).Path
+          foreach ($tool in $gcc, $windres, $makensis) {
+            $resolved = (Get-Command ([IO.Path]::GetFileName($tool)) -CommandType Application | Select-Object -First 1).Source
+            Write-Host "$resolved"
+            if ([IO.Path]::GetFullPath($resolved) -ne $tool) { throw "Expected $tool, resolved $resolved" }
           }
-          Get-Command cl.exe,link.exe,rc.exe,windres.exe | Select-Object Name,Source
+          $target = (& $gcc -dumpmachine).Trim()
+          $nsisVersion = (& $makensis /VERSION).Trim()
+          & $gcc --version | Select-Object -First 1
+          & $windres --version | Select-Object -First 1
+          Write-Host "MinGW target: $target; NSIS version: $nsisVersion"
+          if ($target -cne 'x86_64-w64-mingw32' -or $nsisVersion -cne 'v3.11') { throw 'Unexpected release tool version.' }
+          Get-Command cl.exe,link.exe,rc.exe | Select-Object Name,Source
           & ./deploy/windows/Build-EdgeCandidate.ps1 -Version $env:VERSION -OutputDirectory "$env:RUNNER_TEMP/candidates"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
