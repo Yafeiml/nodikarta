@@ -34,6 +34,8 @@ $properties = @()
 if ($Version) { $properties += "-p:Version=$Version" }
 if ($NativeAot) {
     if (!$Version -or $Version.ToString() -notmatch '^\d+\.\d+\.\d+$') { throw 'Specify a three-part Native AOT release version.' }
+    # The installer verifies the exact three-part product version in both Native AOT images.
+    $properties += '-p:IncludeSourceRevisionInInformationalVersion=false'
     $properties += '-p:PublishAot=true', '-p:NativeDebugSymbols=false', '-p:DebugType=None', '-p:DebugSymbols=false'
 }
 if ($UpdateFeed -or $PublisherPublicKey -or $TestChannel) {
