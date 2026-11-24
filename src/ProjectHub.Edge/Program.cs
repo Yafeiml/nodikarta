@@ -9,6 +9,9 @@ namespace ProjectHub.Edge;
 
 internal static class Program
 {
+    internal static string ReleaseVersion { get; } = typeof(Program).Assembly
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+', 2)[0];
+
     private const string Usage = """
         Nodicarta Edge
           --version                                   显示 Edge 发行版本
@@ -36,7 +39,7 @@ internal static class Program
         Console.OutputEncoding = Encoding.UTF8;
         if (args is ["--version"])
         {
-            Console.WriteLine(typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+', 2)[0]);
+            Console.WriteLine(ReleaseVersion);
             return 0;
         }
         if (args.Length == 0 || args[0] is "--help" or "-h" or "help") { Console.WriteLine(Usage); return 0; }

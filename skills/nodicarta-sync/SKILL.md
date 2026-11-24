@@ -1,6 +1,6 @@
 ---
 name: nodicarta-sync
-description: Save a reusable project decision, verified result or reproducible limitation and its evidence in nodicarta (脉络) when finishing work in a bound workspace. Examples include “把验收结论记到脉络” and “save this decision to nodicarta”.
+description: Save a reusable project decision, verified result or reproducible limitation and its evidence in Nodicarta (脉络) when finishing work in a bound workspace. Examples include “把验收结论记到脉络” and “save this decision to Nodicarta”.
 ---
 
 At the end of the task, consider what a fresh chat could safely rely on. An explicit request to remember is optional. Skip routine activity, suggestions, and repeated checks that add no evidence. Respect requests to keep the work local. Keep project knowledge in the working language of the project.

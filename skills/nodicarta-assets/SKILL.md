@@ -1,6 +1,6 @@
 ---
 name: nodicarta-assets
-description: Find, preview, download or publish versioned shared project assets in nodicarta (脉络). Use for requests like “在脉络里找旧版标志” or “download the original logo from nodicarta”.
+description: Find, preview, download or publish versioned shared project assets in Nodicarta (脉络). Use for requests like “在脉络里找旧版标志” or “download the original logo from Nodicarta”.
 ---
 
 Confirm the project with `list_projects` and check which tools this connection exposes. If only `get_edge_status` is available, read the working directory's access status. Directories bound to the same project share an asset library. Local file operations use the workspace resolved for this chat. When making a poster with a designated project logo, find the original first. Publishing requires both the user's request to share or publish the file and access to `publish_asset`.

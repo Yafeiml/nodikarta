@@ -65,7 +65,7 @@ try
     foreach (var baseline in new[] { "", "# notes", other, "---\n  - id: other\n...\n", "[]", "[{id: other}] # hi" })
     {
         var added = SpecialHarnesses.Change(baseline, exe, state, out var action);
-        Check(action == "接入" && added != baseline, "initial setup");
+        Check(action == "接入" && added.Contains("id: nodicarta-edge") && added.Contains("serverName: nodicarta"), "initial setup");
         Check(SpecialHarnesses.Change(added, exe, state, out action) == added && action == "已接入", "idempotence");
         var upgraded = SpecialHarnesses.Change(added, updated, state, out action, HarnessEdit.Repair);
         Check(action == "已接入" && upgraded != added && upgraded.Contains("用户''s Edge"), "automatic relocation while previous executable still exists");
@@ -73,8 +73,13 @@ try
         if (baseline == other) Check(upgraded.Replace(SpecialHarnesses.CopyDeepSeek(updated, state).ReplaceLineEndings("\r\n") + "\r\n", "") == baseline, "unrelated patch bytes");
         Refuses(() => SpecialHarnesses.Change(added, updated, state + "-different", out _));
     }
+    var oldEntry = SpecialHarnesses.CopyDeepSeek(exe, state, EdgeAccessSetup.LegacyServerName, "projecthub-edge");
+    Check(SpecialHarnesses.Change(oldEntry, updated, state, out var oldAction, HarnessEdit.Repair) ==
+        SpecialHarnesses.CopyDeepSeek(updated, state, EdgeAccessSetup.LegacyServerName, "projecthub-edge") &&
+        oldAction == "已接入", "repair preserves the legacy entry ID and server name");
     foreach (var invalid in new[] { "{broken", "[]\n---\n[]", "- id: projecthub-edge", "- config: {servers: {projecthub: {}}}",
-             "- insert: [{id: custom, config: {serverName: projecthub}}]" })
+             "- insert: [{id: custom, config: {serverName: projecthub}}]", oldEntry + "\n- config: {servers: {nodicarta: {}}}",
+             oldEntry + "\n" + SpecialHarnesses.CopyDeepSeek(exe, state) })
         Refuses(() => SpecialHarnesses.Change(invalid, exe, state, out _));
     var scoped = SpecialHarnesses.CopyDeepSeek(exe, state).Replace("- insert:", "- id: my-group\n  insert:");
     Refuses(() => SpecialHarnesses.Change(scoped, exe, state, out _));

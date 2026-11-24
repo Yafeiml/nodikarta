@@ -2,7 +2,7 @@
 
 ## 安装与打开
 
-从项目的 GitHub Releases 下载 `Nodicarta-Edge-1.1.0-win-x64-setup.exe`，双击运行。安装器在当前 Windows 账号下安装，默认位置为 `%LOCALAPPDATA%\Programs\Nodicarta\Edge`，桌面端和 MCP/CLI 均采用 Native AOT，用户无需安装 .NET。安装完成后从开始菜单打开「Nodicarta Edge」。
+从项目的 GitHub Releases 下载 `Nodicarta-Edge-1.1.1-win-x64-setup.exe`，双击运行。安装器在当前 Windows 账号下安装，默认位置为 `%LOCALAPPDATA%\Programs\Nodicarta\Edge`，桌面端和 MCP/CLI 均采用 Native AOT，用户无需安装 .NET。安装完成后从开始菜单打开「Nodicarta Edge」。
 
 在主窗口右上角点「语言」左侧的「设置」。首次安装默认开启「登录时启动」：下次登录 Windows 后，Edge 静默进入托盘；点托盘图标即可打开窗口。这里也可关闭自启，选择会跨升级保留。
 
@@ -44,7 +44,7 @@
 | Pi Desktop | 安装 Pi 0.99 或更高版本的引擎，在 Edge 点「接入」，然后在 Pi Desktop 选择 Pi 引擎并打开已绑定的目录。 |
 | Google Antigravity | 点一次「接入」。Edge 会为已有和以后绑定的目录配置桌面连接。在 Antigravity 中从绑定目录新建聊天，直接问项目问题即可。命令行版 `agy` 也可从绑定目录启动。 |
 | DeepSeek Harness | 行尾「复制」可取得 Cordis 的 YAML 补丁。重新启动 Host，从已绑定的目录启动独立 Host 可让连接使用对应项目。 |
-| 其他客户端 · STDIO | 点「复制 STDIO 配置」，将 JSON 放入客户端的 MCP 设置。让客户端从聊天的工作目录启动 Edge，同一份配置可以访问不同的已绑定目录。 |
+| 其他客户端 · STDIO | 点「复制接入指令」，将包含完整 MCP 配置的消息粘贴到智能体对话中。手动设置时，可点「复制 STDIO 配置」取得 JSON。让客户端从聊天的工作目录启动 Edge，同一份配置可以访问不同的已绑定目录。 |
 
 要断开某个客户端，在其行尾选择「断开接入」并确认。断开后，重启和升级都会保留这项选择。其他 MCP 服务、用户配置和通用 Skills 也会保留。手动复制给其他客户端的配置需要在对应客户端中移除。对已打开的聊天，请在客户端重新加载 MCP 或重启客户端。
 
@@ -78,7 +78,7 @@
 
 ## 查看和更新通用 Skills
 
-1.6.0 内置五项技能：`nodicarta-init`、`nodicarta-context`、`nodicarta-assets`、`nodicarta-inbox` 和 `nodicarta-sync`。可用中文说「用脉络找上次的决定」，其他语言可用 `nodicarta`。旧版受管 Skills 随手动更新或已启用的自动更新迁移到新名称。
+内置五项技能：`nodicarta-init`、`nodicarta-context`、`nodicarta-assets`、`nodicarta-inbox` 和 `nodicarta-sync`。可用中文说「用脉络找上次的决定」，其他语言可用 `nodicarta`。旧版受管 Skills 随手动更新或已启用的自动更新迁移到新名称。
 
 自 **1.4.0** 起，五个通用 Skills 的说明统一使用英文。聊天里仍可用中文说「初始化项目资料」或「继续做上次那张宣传画」。
 

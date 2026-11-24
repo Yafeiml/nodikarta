@@ -1,6 +1,6 @@
 ---
 name: nodicarta-inbox
-description: Check project feedback, delivery endpoints, analysis tasks and returned results in nodicarta (脉络). Use for “查看脉络里的反馈” or “check the feedback inbox in nodicarta”.
+description: Check project feedback, delivery endpoints, analysis tasks and returned results in Nodicarta (脉络). Use for “查看脉络里的反馈” or “check the feedback inbox in Nodicarta”.
 ---
 
 Check the chat's project with `list_projects`, then use the tools exposed by this connection. If only `get_edge_status` is available, report the current directory's access status. On a feedback collection endpoint, use `list_feedback` to see feedback and linked tasks, or `get_feedback(feedbackId)` for the original text and outcome of a known item. On a task processing endpoint, use `list_tasks` for the receiving endpoint selected for this workspace. Cite actual feedback IDs, task IDs, and returned statuses.

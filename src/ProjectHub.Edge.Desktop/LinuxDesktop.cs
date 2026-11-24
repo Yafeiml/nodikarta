@@ -13,6 +13,15 @@ internal static class LinuxDesktop
     [DllImport("libc")]
     private static extern uint geteuid();
 
+    [DllImport("libX11.so.6")]
+    private static extern int XInitThreads();
+    [DllImport("libX11.so.6")]
+    private static extern nint XOpenDisplay(nint displayName);
+    [DllImport("libX11.so.6")]
+    private static extern nuint XInternAtom(nint display, [MarshalAs(UnmanagedType.LPUTF8Str)] string name, int onlyIfExists);
+    [DllImport("libX11.so.6")]
+    private static extern int XCloseDisplay(nint display);
+
     internal static int Run(string[] args)
     {
         try
@@ -26,6 +35,7 @@ internal static class LinuxDesktop
             var client = OpenClient(args, out var startupError);
             if (startupError != null && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
                 return 1;
+            InitializeClipboardAtoms();
             var result = AppBuilder.Configure(() => new App { Client = client!, LinuxStartupError = startupError }).UseX11().UseSkia()
                 .With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] })
                 .StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose);
@@ -36,6 +46,20 @@ internal static class LinuxDesktop
             Console.Error.WriteLine(e.Message);
             return 1;
         }
+    }
+
+    private static void InitializeClipboardAtoms()
+    {
+        XInitThreads();
+        var display = XOpenDisplay(0);
+        if (display == 0) return;
+        try
+        {
+            // Avalonia 11.3 caches these atoms at startup. Minimal X11 sessions may not have created them yet.
+            foreach (var name in new[] { "CLIPBOARD", "TARGETS", "MULTIPLE", "UTF8_STRING", "ATOM_PAIR", "CLIPBOARD_MANAGER", "SAVE_TARGETS" })
+                XInternAtom(display, name, onlyIfExists: 0);
+        }
+        finally { XCloseDisplay(display); }
     }
 
     private static FileStream? TryLockDesktop()

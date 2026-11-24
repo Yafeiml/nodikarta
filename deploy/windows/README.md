@@ -1,4 +1,4 @@
-# ProjectHub Edge for Windows
+# Nodicarta Edge for Windows
 
 解压全部文件后，在 Windows x64 上打开 PowerShell 7。程序内含 .NET 运行时及 SQLite。准备好 Core 地址和管理员网页「设备管理」签发的一次性配对码。
 

@@ -8,7 +8,8 @@ namespace ProjectHub.Edge.Desktop;
 internal static class SpecialHarnesses
 {
     private const string DeepSeekHint = "从绑定目录启动独立的 dsh Host。桌面及 Web 的多个聊天共享 Host 工作目录，切换聊天不会切换脉络项目。";
-    private const string EntryId = "projecthub-edge";
+    private const string EntryId = "nodicarta-edge";
+    private const string LegacyEntryId = "projecthub-edge";
     private const string Plugin = "@deepseek-ai/dsh-mcp-client";
     private const string Conflict = "已有同名 DeepSeek MCP 或自定义条目，请手动核对。";
     // electron-builder's UUID v5 for the production app ID com.deepseek.dsh.
@@ -25,7 +26,7 @@ internal static class SpecialHarnesses
             WindowsDesktopInstallation.Registered("Pi Desktop.exe", "8482e272-e794-53e8-a4a0-dfb5c42db1ee");
         var engine = HarnessDetection.FindOnPath("pi") ?? InstalledPiPackage(directory, roaming);
         return new("pi", "Pi", Path.Combine(directory, "mcp.json"), ["mcpServers"], engine != null || desktop,
-            desktop ? "在 Pi Desktop 选择 Pi 引擎并打开已绑定的目录。" : "在绑定目录启动 Pi 0.99 或更高版本，通过 /mcp 检查 projecthub。")
+            desktop ? "在 Pi Desktop 选择 Pi 引擎并打开已绑定的目录。" : "在绑定目录启动 Pi 0.99 或更高版本，通过 /mcp 检查脉络接入项。")
             { BlockedReason = !Path.IsPathFullyQualified(directory) ? variable + " 需要使用绝对路径。" :
                 desktop && engine == null ? "已安装 Pi Desktop，请先安装 Pi 引擎（0.99 或更高版本）。" :
                 engine != null && LegacyPi(engine) ? "当前 Pi 版本早于 0.99，请升级后使用内置 MCP。" : null };
@@ -164,12 +165,12 @@ internal static class SpecialHarnesses
         return "'" + value.Replace("'", "''") + "'";
     }
 
-    internal static string CopyDeepSeek(string command, string state) => $"""
+    internal static string CopyDeepSeek(string command, string state, string serverName = EdgeAccessSetup.ServerName, string entryId = EntryId) => $"""
         - insert:
-            - id: {EntryId}
+            - id: {entryId}
               name: '{Plugin}'
               config:
-                serverName: projecthub
+                serverName: {serverName}
                 transport: stdio
                 command: {Quote(command)}
                 args: [{string.Join(", ", EdgeAccessSetup.GlobalArguments(state).Select(Quote))}]
@@ -203,8 +204,11 @@ internal static class SpecialHarnesses
             if (ReferenceEquals(node, managed) || !visited.Add(node)) continue;
             if (node is YamlMappingNode map)
             {
-                if (Value(Field(map, "id")) == EntryId || Value(Field(map, "serverName")) == "projecthub" ||
-                    Field(Field(map, "servers"), "projecthub") != null) throw new InvalidDataException(Conflict);
+                var servers = Field(map, "servers");
+                if (Value(Field(map, "id")) is EntryId or LegacyEntryId ||
+                    Value(Field(map, "serverName")) is EdgeAccessSetup.ServerName or EdgeAccessSetup.LegacyServerName ||
+                    Field(servers, EdgeAccessSetup.ServerName) != null || Field(servers, EdgeAccessSetup.LegacyServerName) != null)
+                    throw new InvalidDataException(Conflict);
                 foreach (var child in map.Children.Values) pending.Push(child);
             }
             else if (node is YamlSequenceNode list)
@@ -212,10 +216,10 @@ internal static class SpecialHarnesses
         }
     }
 
-    private static string FlowPatch(string command, string state)
+    private static string FlowPatch(string command, string state, string serverName = EdgeAccessSetup.ServerName, string entryId = EntryId)
     {
         var args = string.Join(", ", EdgeAccessSetup.GlobalArguments(state).Select(Quote));
-        return $"{{insert: [{{id: {EntryId}, name: '{Plugin}', config: {{serverName: projecthub, transport: stdio, command: {Quote(command)}, args: [{args}]}}}}]}}";
+        return $"{{insert: [{{id: {entryId}, name: '{Plugin}', config: {{serverName: {serverName}, transport: stdio, command: {Quote(command)}, args: [{args}]}}}}]}}";
     }
 
     internal static string Change(string text, string command, string state, out string action, HarnessEdit edit = HarnessEdit.Connect)
@@ -232,7 +236,7 @@ internal static class SpecialHarnesses
         var named = root.Children.OfType<YamlMappingNode>().Where(row => row.Children.Count == 1 &&
                 row.Anchor.IsEmpty && row.Tag.IsEmpty && Field(row, "insert") is YamlSequenceNode list && list.Anchor.IsEmpty && list.Tag.IsEmpty)
             .SelectMany(row => ((YamlSequenceNode)Field(row, "insert")!).Children)
-            .OfType<YamlMappingNode>().Where(row => Value(Field(row, "id")) == EntryId).ToArray();
+            .OfType<YamlMappingNode>().Where(row => Value(Field(row, "id")) is EntryId or LegacyEntryId).ToArray();
         if (named.Length > 1) throw new InvalidDataException(Conflict);
         var owned = named.SingleOrDefault();
         CheckConflicts(root, owned);
@@ -240,11 +244,13 @@ internal static class SpecialHarnesses
         {
             var config = Field(owned, "config") as YamlMappingNode;
             var executable = Field(config, "command") as YamlScalarNode;
+            var entryId = Value(Field(owned, "id"))!;
+            var serverName = Value(Field(config, "serverName"));
             if (owned.Children.Count != 3 || !owned.Anchor.IsEmpty || !owned.Tag.IsEmpty ||
                 Value(Field(owned, "name")) != Plugin || config?.Children.Count != 4 || !config.Anchor.IsEmpty || !config.Tag.IsEmpty ||
                 owned.Children.Any(p => !p.Key.Tag.IsEmpty || !p.Value.Tag.IsEmpty) ||
                 config.Children.Any(p => !p.Key.Tag.IsEmpty || !p.Value.Tag.IsEmpty) ||
-                Value(Field(config, "serverName")) != "projecthub" || Value(Field(config, "transport")) != "stdio" ||
+                serverName is not (EdgeAccessSetup.ServerName or EdgeAccessSetup.LegacyServerName) || Value(Field(config, "transport")) != "stdio" ||
                 executable?.Value is not { } prior || !executable.Anchor.IsEmpty || !Path.IsPathFullyQualified(prior) ||
                 !Path.GetFileName(prior).Equals("ProjectHub.Edge.exe", StringComparison.OrdinalIgnoreCase) ||
                 Field(config, "args") is not YamlSequenceNode args || !args.Anchor.IsEmpty ||
@@ -272,7 +278,7 @@ internal static class SpecialHarnesses
                 var offset = checked((int)wrapper.Start.Index);
                 if (root.Style == YamlDotNet.Core.Events.SequenceStyle.Flow)
                 {
-                    var row = FlowPatch(prior, registered);
+                    var row = FlowPatch(prior, registered, serverName, entryId);
                     if (!text.AsSpan(offset).StartsWith(row)) throw new InvalidDataException(Conflict);
                     var endOfRow = offset + row.Length;
                     if (text.AsSpan(endOfRow).StartsWith(", ")) endOfRow += 2;
@@ -282,7 +288,7 @@ internal static class SpecialHarnesses
                 }
                 var startOfLine = text.LastIndexOf('\n', offset) + 1;
                 var indent = new string(' ', checked((int)root.Start.Column - 1));
-                var original = indent + CopyDeepSeek(prior, registered).ReplaceLineEndings(newline + indent);
+                var original = indent + CopyDeepSeek(prior, registered, serverName, entryId).ReplaceLineEndings(newline + indent);
                 if (!text.AsSpan(startOfLine).StartsWith(original)) throw new InvalidDataException(Conflict);
                 var endOfBlock = startOfLine + original.Length;
                 if (endOfBlock < text.Length && !text.AsSpan(endOfBlock).StartsWith(newline)) throw new InvalidDataException(Conflict);

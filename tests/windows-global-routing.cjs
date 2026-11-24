@@ -243,7 +243,16 @@ async function run() {
         clients.push(legacy,fixed);
         const peer = fixed.peer(), anonymous = fixed.peer(), modern = fixed.peer();
         const tagged = [[global,'global','1'],[legacy,'scoped','2'],[fixed,'http-first','3'],[peer,'http-second','4']];
-        await Promise.all(tagged.map(([c,name,version])=>handshake(c,{},{name,version})));
+        const releaseVersion = execFileSync(exe, ['--version'], {encoding:'utf8', windowsHide:true}).trim();
+        await Promise.all(tagged.map(([c,name,version])=>handshake({
+            ...c,
+            async call(method, params) {
+                const result = await c.call(method, params);
+                if (method === 'initialize')
+                    assert.deepEqual(result.serverInfo, {name:'nodicarta', title:'Nodicarta Edge', version:releaseVersion});
+                return result;
+            }
+        },{},{name,version})));
         const modernCall = info => modern.call('tools/call',{name:'get_project_snapshot',arguments:{},_meta:{
             'io.modelcontextprotocol/protocolVersion':'2026-07-28','io.modelcontextprotocol/clientCapabilities':{},
             ...(info && {'io.modelcontextprotocol/clientInfo':info})}},{

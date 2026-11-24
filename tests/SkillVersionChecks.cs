@@ -35,6 +35,12 @@ try
         "a preserved user directory without SKILL.md is not an installed Skill");
     emptySkill.Delete();
     await service.InstallAsync();
+    foreach (var name in UserSkills.Names)
+    {
+        var definition = File.ReadLines(Path.Combine(UserSkills.Target(home, name), "SKILL.md")).Take(3).ToArray();
+        Check(definition.Length == 3 && definition[1] == $"name: {name}" && definition[2].Contains("Nodicarta (脉络)"),
+            $"installed Skill definition uses the Nodicarta name and branding: {name}");
+    }
     Check(service.ReadSkills().Skills.All(s => s.InstalledVersion == version && s.State == SkillInstallState.Current), "installed versions");
     Mark("inbox", "0.1.0");
     Check(await service.UpdateSkillsAsync(automatic: true) == 1 && Local("inbox").State == SkillInstallState.Current, "default-on update");

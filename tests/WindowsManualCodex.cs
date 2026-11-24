@@ -54,7 +54,7 @@ internal static class WindowsManualCodex
                 Invoke(ActionButton()!);
                 Wait(() => Outcome().Contains("已接入当前用户的 Codex"), "单项接入成功");
                 var config = TomlSerializer.Deserialize<TomlTable>(File.ReadAllText(file))!;
-                var entry = (TomlTable)((TomlTable)config["mcp_servers"])["projecthub"];
+                var entry = (TomlTable)((TomlTable)config["mcp_servers"])["nodicarta"];
                 Check(Equals(entry["command"], GlobalCodexAccess.CurrentCommand) && entry["args"] is TomlArray argsList &&
                     argsList.Cast<object>().SequenceEqual(new[] { "mcp-stdio-global", "--state", client.StateDirectory }), "写入当前设备的 MCP 配置");
                 Check(UserSkills.Names.All(n => File.Exists(Path.Combine(UserSkills.Target(home, n), "SKILL.md"))), "安装全部 Skills");

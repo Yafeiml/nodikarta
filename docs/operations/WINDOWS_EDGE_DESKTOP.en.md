@@ -2,7 +2,7 @@
 
 ## Install and open Edge
 
-Download `Nodicarta-Edge-1.1.0-win-x64-setup.exe` from the project's GitHub Releases and run it under your Windows account. The desktop and MCP/CLI use Native AOT. The installer defaults to `%LOCALAPPDATA%\Programs\Nodicarta\Edge`. Open **Nodicarta Edge** from Start.
+Download `Nodicarta-Edge-1.1.1-win-x64-setup.exe` from the project's GitHub Releases and run it under your Windows account. The desktop and MCP/CLI use Native AOT. The installer defaults to `%LOCALAPPDATA%\Programs\Nodicarta\Edge`. Open **Nodicarta Edge** from Start.
 
 Open **Settings** to the left of **Language** in the title bar to manage sign-in startup and automatic Edge updates. Sign-in startup is enabled on a new installation and opens only the tray icon. Click the icon to open the window. The installer preserves your selection across upgrades.
 
@@ -26,7 +26,7 @@ To change the Core address, select the double-arrow button beside the Core statu
 
 ## Connect or disconnect an AI client
 
-Open the agent access screen from the overview or tray. Choose an installed client to connect, or use the bulk action. You can also copy the configuration for manual setup. Open a chat from a bound folder and reload the client's MCP connection. The **Skills** tab manages the shared Skills and their updates.
+Open **AI clients** from the overview or tray. Connect an installed client from **Popular clients**, or choose **Connect all installed**. In **Other clients · STDIO**, choose **Copy setup instructions** to paste the complete MCP configuration into your agent's chat, or **Copy STDIO configuration** to configure the client manually. Open a chat from a linked folder and reload the client's MCP connection. The **Shared Skills** tab manages the shared Skills and their updates.
 
 Open Claude Desktop once before connecting it in Edge. After connecting, completely quit and reopen Claude. If Claude Code is also installed, each has its own connection. A Claude Desktop session can access project tools when it supplies a single linked local folder. For Pi Desktop, install the Pi engine (0.99 or later), connect in Edge, then select the Pi engine and open a linked folder in Pi Desktop.
 

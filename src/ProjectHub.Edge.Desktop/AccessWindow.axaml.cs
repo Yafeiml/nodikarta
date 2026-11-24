@@ -49,7 +49,17 @@ internal partial class AccessWindow : UserControl
         global = new(client);
         harnesses = harnessAccess ?? new(client);
         InitializeComponent();
-        DirectoryTitle.IsVisible = DirectoryMinimizeButton.IsVisible = !IsDevicePage;
+        if (OperatingSystem.IsLinux())
+        {
+            deviceTab = DeviceTab.Stdio;
+            DeviceAccessTabs.IsVisible = CopyConfigButton.IsVisible = ToggleConfigButton.IsVisible = false;
+        }
+        labels.Set(StdioHelp, OperatingSystem.IsLinux()
+            ? "复制完整的接入指令，粘贴到你常用的智能体对话中。"
+            : "把接入指令发给智能体，或将 JSON 添加到客户端的全局 MCP 设置。");
+        DirectoryTitle.IsVisible = !IsDevicePage;
+        DirectoryMinimizeButton.IsVisible = !IsDevicePage && !OperatingSystem.IsLinux();
+        RefreshCloseLabel();
         ProjectName.Text = project?.Name;
         DevicePage.IsVisible = IsDevicePage;
         ClientPage.IsVisible = ProjectHeader.IsVisible = Rail.IsVisible = !IsDevicePage;
@@ -91,6 +101,11 @@ internal partial class AccessWindow : UserControl
         {
             if (IsDevicePage)
             {
+                if (OperatingSystem.IsLinux())
+                {
+                    if (!IsKeyboardFocusWithin) CopySetupButton.Focus();
+                    return;
+                }
                 var batch = (Application.Current as App)?.PendingHarnessBatch;
                 await RunAsync(async ct =>
                 {
@@ -123,6 +138,7 @@ internal partial class AccessWindow : UserControl
 
     internal void RefreshLanguage()
     {
+        RefreshCloseLabel();
         labels.Refresh();
         if (IsDevicePage)
         {
@@ -143,6 +159,13 @@ internal partial class AccessWindow : UserControl
     }
 
     private Window? Host => TopLevel.GetTopLevel(this) as Window;
+
+    private void RefreshCloseLabel()
+    {
+        var label = OperatingSystem.IsLinux() ? UiLanguage.Text("关闭窗口", "Close window") : UiLanguage.Message("收回到托盘");
+        ToolTip.SetTip(CloseAccessWindowButton, label);
+        AutomationProperties.SetName(CloseAccessWindowButton, label);
+    }
 
     private void CloseWindow(object? sender, RoutedEventArgs e) => CloseRequested?.Invoke();
     private void HideWindow(object? sender, RoutedEventArgs e) => Host?.Close();
@@ -281,7 +304,7 @@ internal partial class AccessWindow : UserControl
             ConfigText.Text = showConfig ? setup.GlobalStdioJson() : "";
             DeviceConfigPanel.IsVisible = showConfig;
             ToggleConfigButton.Content = showConfig ? UiLanguage.Message("收起配置") : UiLanguage.Message("查看配置");
-            CopyConfigButton.IsEnabled = ToggleConfigButton.IsEnabled = !busy;
+            CopySetupButton.IsEnabled = CopyConfigButton.IsEnabled = ToggleConfigButton.IsEnabled = !busy;
             ClientsFormat.IsEnabled = StdioFormat.IsEnabled = SkillsFormat.IsEnabled = HarnessPanel.IsEnabled = SkillsHost.IsEnabled = !busy;
             InstallDetectedButton.IsEnabled = !busy && hasInstallableClients;
             return;
@@ -427,6 +450,12 @@ internal partial class AccessWindow : UserControl
     {
         await WriteClipboardAsync(setup.GlobalStdioJson());
         return "已复制全局 STDIO 配置。";
+    }, "正在复制配置…");
+
+    private async void CopySetup(object? sender, RoutedEventArgs e) => await RunAsync(async _ =>
+    {
+        await WriteClipboardAsync(setup.GlobalSetupInstructions());
+        return "已复制接入指令，可直接粘贴给智能体。";
     }, "正在复制配置…");
 
     private Guid? SelectedEndpoint() => Profile switch

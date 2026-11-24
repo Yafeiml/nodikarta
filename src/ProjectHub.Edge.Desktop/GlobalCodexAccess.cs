@@ -11,7 +11,7 @@ internal sealed class GlobalCodexAccess
     private readonly string userHome;
     private readonly string configPath;
     private readonly string command;
-    private sealed record Managed(string Block, string Command, string State);
+    private sealed record Managed(string Block, string Command, string State, string ServerName);
 
     internal static string UserHome => Path.GetFullPath(Environment.GetEnvironmentVariable("USERPROFILE")
         ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
@@ -30,8 +30,8 @@ internal sealed class GlobalCodexAccess
     }
 
     private static bool Same(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
-    private static string Format(string exe, string state) =>
-        CodexAccessFile.Format(exe, EdgeAccessSetup.GlobalArguments(state), [], automatic: true);
+    private static string Format(string exe, string state, string serverName = EdgeAccessSetup.ServerName) =>
+        CodexAccessFile.Format(exe, EdgeAccessSetup.GlobalArguments(state), [], automatic: true, serverName: serverName);
     internal string ConfigToml() => Format(command, client.StateDirectory);
 
     private static Managed? Inspect(string text)
@@ -39,15 +39,15 @@ internal sealed class GlobalCodexAccess
         var root = TomlSerializer.Deserialize(text, CodexToml.Default.TomlTable)!;
         if (!root.TryGetValue("mcp_servers", out var value)) return null;
         if (value is not TomlTable servers) throw new InvalidDataException("Codex 的 mcp_servers 格式无效。");
-        if (!servers.TryGetValue("projecthub", out var entry)) return null;
-        if (entry is TomlTable { Count: 2 } server &&
+        if (CodexAccessFile.FindServerName(servers) is not { } serverName) return null;
+        if (servers[serverName] is TomlTable { Count: 2 } server &&
             server.TryGetValue("command", out var c) && c is string exe &&
             server.TryGetValue("args", out var a) && a is TomlArray args && args.Cast<object>().ToArray() is ["mcp-stdio-global", "--state", string state] &&
-            CodexAccessFile.ExactBlock(text, Format(exe, state)) is { } block)
+            CodexAccessFile.ExactBlock(text, Format(exe, state, serverName)) is { } block)
         {
             var rest = TomlSerializer.Deserialize(text.Replace(block, "", StringComparison.Ordinal), CodexToml.Default.TomlTable)!;
-            if (!rest.TryGetValue("mcp_servers", out var r) || r is TomlTable table && !table.ContainsKey("projecthub"))
-                return new(block, exe, state);
+            if (!rest.TryGetValue("mcp_servers", out var r) || r is TomlTable table && !table.ContainsKey(serverName))
+                return new(block, exe, state, serverName);
         }
         throw new InvalidDataException("用户级 Codex 已有同名自定义配置，请手动核对。");
     }
@@ -150,7 +150,7 @@ internal sealed class GlobalCodexAccess
             var registration = Registration(old, state, command);
             if (old != null && registration is SkillRegistration.MissingCommand or SkillRegistration.Current &&
                 (!Same(old.Command, command) || !Same(old.State, state)))
-                return CodexAccessFile.ReplaceBlock(before, old.Block, Format(command, state));
+                return CodexAccessFile.ReplaceBlock(before, old.Block, Format(command, state, old.ServerName));
             return before;
         });
 
@@ -280,7 +280,8 @@ internal sealed class GlobalCodexAccess
                 var observed = Inspect(before);
                 if (observed != current) throw new IOException("用户级 MCP 配置已同时变更，请重新接入。");
                 if (!install) return before.Replace(observed!.Block, "", StringComparison.Ordinal);
-                var updated = CodexAccessFile.ReplaceBlock(before, observed?.Block, ConfigToml());
+                var updated = CodexAccessFile.ReplaceBlock(before, observed?.Block,
+                    Format(command, client.StateDirectory, observed?.ServerName ?? EdgeAccessSetup.ServerName));
                 if (Inspect(updated) is not { } result || !Same(result.Command, command) || !Same(result.State, client.StateDirectory))
                     throw new InvalidDataException("无法合并现有用户级 TOML，请手动核对。");
                 return updated;

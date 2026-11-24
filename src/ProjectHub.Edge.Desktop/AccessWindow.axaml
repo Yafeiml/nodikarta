@@ -81,7 +81,7 @@
         </Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
           <Button x:Name="DirectoryMinimizeButton" Classes="ghost caption" Click="Minimize" AutomationProperties.Name="{desktop:Tr '最小化'}" ToolTip.Tip="{desktop:Tr '最小化'}"><Path Width="11" Height="2" Data="M0,1 H11" Stroke="#4B6073" StrokeThickness="1.3"/></Button>
-          <Button Classes="titleClose" Click="HideWindow" AutomationProperties.Name="{desktop:Tr '收回到托盘'}" ToolTip.Tip="{desktop:Tr '收回到托盘'}" AutomationProperties.AutomationId="HideAccessWindow"><Path/></Button>
+          <Button x:Name="CloseAccessWindowButton" Classes="titleClose" Click="HideWindow" AutomationProperties.AutomationId="HideAccessWindow"><Path/></Button>
         </StackPanel>
       </Grid>
     </Border>
@@ -131,7 +131,7 @@
                   <Button x:Name="InstallDetectedButton" Grid.Column="2" Classes="primary harnessAction" Click="InstallHarnesses"
                           Content="{desktop:Tr '一键接入已安装'}" ToolTip.Tip="{desktop:Tr '接入本机已安装的智能体', English='Connect installed clients'}" AutomationProperties.AutomationId="InstallDetectedHarnesses"/>
                 </Grid>
-                <WrapPanel Classes="pillGroup" AutomationProperties.AutomationId="AccessMethods">
+                <WrapPanel x:Name="DeviceAccessTabs" Classes="pillGroup" AutomationProperties.AutomationId="AccessMethods">
                   <Button x:Name="ClientsFormat" Classes="pill current" Content="{desktop:Tr '常用客户端'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatClients"/>
                   <Button x:Name="StdioFormat" Classes="pill" Content="{desktop:Tr '其他客户端 · STDIO'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatStdio"/>
                   <Button x:Name="SkillsFormat" Classes="pill" Content="{desktop:Tr '通用 Skills'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatSkills"/>
@@ -185,11 +185,12 @@
                   <StackPanel Spacing="13">
                     <StackPanel Spacing="5">
                       <TextBlock Text="{desktop:Tr 'STDIO 客户端配置'}" FontSize="17" FontWeight="SemiBold"/>
-                      <TextBlock Classes="muted" Text="{desktop:Tr '将这份 JSON 添加到客户端的全局 MCP 设置。客户端从聊天的工作目录启动 Edge 时，会自动识别所属项目。'}"/>
+                      <TextBlock x:Name="StdioHelp" Classes="muted"/>
                     </StackPanel>
                     <WrapPanel ItemSpacing="7" LineSpacing="5">
-                      <Button x:Name="ToggleConfigButton" Classes="aux" Click="ToggleConfig" AutomationProperties.AutomationId="ToggleAccessConfig"/>
+                      <Button x:Name="CopySetupButton" Classes="primary" Content="{desktop:Tr '复制接入指令'}" Click="CopySetup" AutomationProperties.AutomationId="CopySetupButton"/>
                       <Button x:Name="CopyConfigButton" Classes="aux" Content="{desktop:Tr '复制 STDIO 配置'}" Click="CopyConfig" AutomationProperties.AutomationId="CopyConfigButton"/>
+                      <Button x:Name="ToggleConfigButton" Classes="aux" Click="ToggleConfig" AutomationProperties.AutomationId="ToggleAccessConfig"/>
                     </WrapPanel>
                     <Border x:Name="DeviceConfigPanel" Background="White" CornerRadius="6" BorderBrush="#D8E2EB" BorderThickness="1" Padding="11,8" IsVisible="False">
                       <SelectableTextBlock x:Name="ConfigText" TextWrapping="Wrap" FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="12" Foreground="#30465C" AutomationProperties.AutomationId="AccessConfigPreview"/>

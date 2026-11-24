@@ -52,7 +52,7 @@ internal static class StandardHarnesses
             new StandardHarness("claude", "Claude Code", claude, ["mcpServers"],
                 HarnessDetection.OnPath("claude") || File.Exists(Path.Combine(home, ".local", "bin", "claude.exe")) ||
                 File.Exists(Path.Combine(local, "Microsoft", "WinGet", "Links", "claude.exe")),
-                "从绑定目录启动 Claude Code，在 /mcp 中查看 projecthub。") {
+                "从绑定目录启动 Claude Code，在 /mcp 中查看脉络接入项。") {
                 BlockedReason = !customClaude && !string.IsNullOrWhiteSpace(claudeDirectory) ? "CLAUDE_CONFIG_DIR 需要指向绝对路径。" : null
             },
             new StandardHarness("antigravity", "Google Antigravity", antigravity, ["mcpServers"],
@@ -64,7 +64,7 @@ internal static class StandardHarnesses
             new StandardHarness("cursor", "Cursor", cursor, ["mcpServers"],
                 HarnessDetection.OnPath("cursor", "cursor-agent") || WindowsDesktopInstallation.CursorDesktop(local, programs) ||
                 File.Exists(Path.Combine(local, "cursor-agent", "cursor-agent.cmd")),
-                "在 Cursor 打开已绑定的文件夹，在 Settings → Tools & MCP 中确认 projecthub 已启用。"),
+                "在 Cursor 打开已绑定的文件夹，在 Settings → Tools & MCP 中确认脉络接入项已启用。"),
             OpenCode(home, WindowsDesktopInstallation.OpenCodeDesktop(local, programs))
         ];
         if (desktop.Detected) clients.Insert(0, desktop);
@@ -104,13 +104,15 @@ internal static class StandardHarnesses
         var target = new StandardHarness("opencode", "OpenCode", path, ["mcp"], desktopInstalled ||
             HarnessDetection.OnPath("opencode") || File.Exists(Path.Combine(home, ".opencode", "bin", "opencode.exe")) ||
             File.Exists(Path.Combine(home, ".local", "bin", "opencode.exe")),
-            "在已绑定的目录启动 OpenCode，在 MCP 列表中查看 projecthub。");
+            "在已绑定的目录启动 OpenCode，在 MCP 列表中查看脉络接入项。");
         if (!explicitFile && !string.IsNullOrWhiteSpace(custom))
             return target with { BlockedReason = "OPENCODE_CONFIG 需要指向绝对路径。" };
         if (!explicitDirectory && !string.IsNullOrWhiteSpace(customDirectory))
             return target with { BlockedReason = "OPENCODE_CONFIG_DIR 需要指向绝对路径。" };
         try
         {
+            static bool HasEdgeEntry(JsonElement servers) => servers.TryGetProperty(EdgeAccessSetup.ServerName, out _) ||
+                servers.TryGetProperty(EdgeAccessSetup.LegacyServerName, out _);
             // V2 reads both MCP shapes. Preserve the installed entry's shape and its original file.
             var files = new[] { Path.Combine(global, "config.json"), Path.Combine(global, "opencode.json"), Path.Combine(global, "opencode.jsonc"),
                 explicitFile ? custom! : path, json, jsonc }.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase);
@@ -126,19 +128,19 @@ internal static class StandardHarnesses
                     CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true, AllowDuplicateProperties = false
                 });
                 if (!doc.RootElement.TryGetProperty("mcp", out var mcp)) continue;
-                var legacy = mcp.TryGetProperty("projecthub", out _);
+                var legacy = HasEdgeEntry(mcp);
                 var v2 = mcp.TryGetProperty("servers", out var servers) && servers.ValueKind == JsonValueKind.Object;
                 // A V1 server can itself be named "servers".
                 v2 = v2 && !(servers.TryGetProperty("type", out var type) && type.ValueKind == JsonValueKind.String) &&
                     !(servers.TryGetProperty("enabled", out var enabled) && enabled.ValueKind is JsonValueKind.True or JsonValueKind.False);
-                var modern = v2 && servers.TryGetProperty("projecthub", out _);
+                var modern = v2 && HasEdgeEntry(servers);
                 if (file == null)
                 {
-                    if (legacy || modern) return target with { BlockedReason = "OPENCODE_CONFIG_CONTENT 已定义 projecthub，请先核对运行时配置。" };
+                    if (legacy || modern) return target with { BlockedReason = "OPENCODE_CONFIG_CONTENT 已定义脉络接入项，请先核对运行时配置。" };
                     break;
                 }
                 if ((legacy && modern) || (claimed && (legacy || modern)))
-                    return target with { BlockedReason = "多个 OpenCode 配置同时定义 projecthub，请先核对生效的配置。" };
+                    return target with { BlockedReason = "多个 OpenCode 配置同时定义脉络接入项，请先核对生效的配置。" };
                 var writable = explicitDirectory
                     ? StringComparer.OrdinalIgnoreCase.Equals(file, json) || StringComparer.OrdinalIgnoreCase.Equals(file, jsonc)
                     : !explicitFile || StringComparer.OrdinalIgnoreCase.Equals(file, path);
@@ -147,7 +149,7 @@ internal static class StandardHarnesses
                     target = target with { ConfigPath = file, ServerPath = v2 && !legacy ? ["mcp", "servers"] : ["mcp"] };
                 claimed |= legacy || modern;
             }
-            return outsideProfile ? target with { BlockedReason = "其他 OpenCode 配置位置已定义 projecthub，请核对当前指定的配置。" } : target;
+            return outsideProfile ? target with { BlockedReason = "其他 OpenCode 配置位置已定义脉络接入项，请核对当前指定的配置。" } : target;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or System.Text.DecoderFallbackException)
         { return target with { BlockedReason = "无法确认现有 OpenCode 配置的格式或文件路径，请先核对。" }; }

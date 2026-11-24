@@ -22,6 +22,9 @@ internal static class McpHost
 {
     internal static readonly JsonSerializerOptions ToolOptions = EdgeJson.CreateToolOptions();
 
+    internal static void SetServerInfo(McpServerOptions options) =>
+        options.ServerInfo = new() { Name = "nodicarta", Title = "Nodicarta Edge", Version = Program.ReleaseVersion };
+
     internal static IDisposable UseClientSource(McpServer server)
     {
         var client = server.ClientInfo;
@@ -69,7 +72,7 @@ internal static class McpHost
             var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true });
             builder.Services.AddLogging();
             builder.Services.AddSingleton(project);
-            RegisterTools(builder.Services.AddMcpServer().WithStdioServerTransport(), selection, project);
+            RegisterTools(builder.Services.AddMcpServer(SetServerInfo).WithStdioServerTransport(), selection, project);
             using var host = builder.Build();
             await host.StartAsync(ct);
             using var lease = listener.Register(stateDirectory);
@@ -87,7 +90,7 @@ internal static class McpHost
         web.Services.AddSingleton(project);
         // Older callers never echoed a session ID when this endpoint was stateless.
         AppContext.SetSwitch("ModelContextProtocol.AspNetCore.AllowNewSessionForNonInitializeRequests", true);
-        var server = web.Services.AddMcpServer().WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.StatefulForInitializeClients);
+        var server = web.Services.AddMcpServer(SetServerInfo).WithHttpTransport(o => o.SessionMode = HttpServerSessionMode.StatefulForInitializeClients);
         RegisterTools(server, selection, project);
         if (listener.WorkspaceId != null)
         {

@@ -146,7 +146,7 @@
                         </Border>
                       </WrapPanel>
                       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                        <TextBlock Classes="hint" Text="{desktop:Tr '本机设备'}" FontSize="12"/>
+                        <TextBlock x:Name="MachineLabel" Classes="hint" Text="{desktop:Tr '本机设备'}" FontSize="12"/>
                         <TextBlock Grid.Column="1" x:Name="MachineName" Classes="hint" FontSize="12" TextTrimming="CharacterEllipsis" AutomationProperties.AutomationId="MachineName"/>
                       </Grid>
                     </StackPanel>

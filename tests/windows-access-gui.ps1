@@ -354,7 +354,7 @@ foreach ($mode in 'none','readOnly','readWrite') {
                 (ById $access 'AccessResult').Current.Name -like '*Cursor*'
             }
             $claude = Get-Content -Raw -LiteralPath (Join-Path $testUserHome '.claude.json') | ConvertFrom-Json
-            if ($claude.mcpServers.projecthub.command -ne $cli) { throw 'Claude Code 注册项未指向本次验收包。' }
+            if ($claude.mcpServers.nodicarta.command -ne $cli) { throw 'Claude Code 注册项未指向本次验收包。' }
             if ((Get-Content -Raw $opencodeConfig | ConvertFrom-Json).mcp.projecthub.command[0] -ne $cli) {
                 throw 'OpenCode 旧版接入路径未更新。'
             }

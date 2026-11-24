@@ -44,11 +44,16 @@ internal partial class MainWindow : Window
         if (OperatingSystem.IsWindows()) Win32Properties.AddWndProcHookCallback(this, FilterWindowCommands);
         if (OperatingSystem.IsLinux())
         {
+            SystemDecorations = SystemDecorations.None;
+            // The existing in-client outline also frames the undecorated Linux window.
+            Windows10Frame.IsVisible = true;
             FontFamily = FontFamily.Default;
-            PreferencesButton.IsVisible = AccessSettingsButton.IsVisible = false;
+            MachineLabel.IsVisible = false;
+            Grid.SetColumn(MachineName, 0);
+            Grid.SetColumnSpan(MachineName, 2);
+            PreferencesButton.IsVisible = false;
             FolderPath.IsVisible = true;
             PairOpenCoreButton.Width = PairButton.Width = 132;
-            GlobalAccessButton.Width = 144;
             LinuxLabels();
         }
         DesktopVersion.Text = $"v{Program.ReleaseVersion}";
@@ -134,8 +139,6 @@ internal partial class MainWindow : Window
         var close = UiLanguage.Text("关闭窗口", "Close window");
         ToolTip.SetTip(CloseButton, close);
         Avalonia.Automation.AutomationProperties.SetName(CloseButton, close);
-        GlobalAccessButton.Content = UiLanguage.Text("复制 MCP 配置", "Copy MCP config");
-        ToolTip.SetTip(GlobalAccessButton, UiLanguage.Text("在智能体的 MCP 设置中粘贴配置，从已绑定目录启动。", "Paste into your client's MCP settings and start it in a linked folder."));
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -255,8 +258,12 @@ internal partial class MainWindow : Window
                 OperatingSystem.IsLinux() ? "等待设备配对" : "关闭窗口后继续在托盘等待配对");
             return;
         }
-        MachineName.Text = client.GetDeviceName(identity.DeviceId);
-        ToolTip.SetTip(MachineName, MachineName.Text);
+        var deviceName = client.GetDeviceName(identity.DeviceId);
+        if (OperatingSystem.IsLinux())
+            labels.Set(MachineName, () => $"{UiLanguage.Message("本机设备")}  {deviceName}");
+        else
+            MachineName.Text = deviceName;
+        ToolTip.SetTip(MachineName, deviceName);
         RefreshTransportStatus();
         SetCoreStatus("连接中", "#EDF1F6", "#52647A");
         DesktopSnapshot snapshot;
@@ -326,18 +333,7 @@ internal partial class MainWindow : Window
 
     private void ShowAccessSettings(object? sender, RoutedEventArgs e) => OpenAccessSettings(false);
 
-    private async void ShowGlobalSettings(object? sender, RoutedEventArgs e)
-    {
-        if (!OperatingSystem.IsLinux()) { OpenAccessSettings(); return; }
-        await RunAsync(async () =>
-        {
-            var command = Path.Combine(AppContext.BaseDirectory, "ProjectHub.Edge");
-            if (!File.Exists(command)) throw new FileNotFoundException(UiLanguage.Text("找不到随包提供的 Edge 命令行程序。", "The bundled Edge command-line program is missing."));
-            var clipboard = Clipboard ?? throw new InvalidOperationException("无法访问系统剪贴板。");
-            await clipboard.SetTextAsync(EdgeAccessSetup.StdioJson(command, EdgeAccessSetup.GlobalArguments(client.StateDirectory)));
-            labels.Set(Message, "已复制 MCP 配置");
-        });
-    }
+    private void ShowGlobalSettings(object? sender, RoutedEventArgs e) => OpenAccessSettings();
 
     internal void Reveal()
     {

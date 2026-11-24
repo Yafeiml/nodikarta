@@ -173,6 +173,7 @@ internal sealed class GlobalMcpSession
         builder.Services.AddScoped(sp => sp.GetRequiredService<GlobalToolCall>().Access!.Client!);
         builder.Services.AddMcpServer(options =>
             {
+                McpHost.SetServerInfo(options);
                 options.ScopeRequests = true;
                 if (useRoots || (cursorPlaceholder && cursorCli == null))
                 {
@@ -265,6 +266,6 @@ internal sealed class GlobalToolCall
 [McpServerToolType]
 internal sealed class GlobalDiagnostics
 {
-    [McpServerTool(Name = GlobalMcpSession.DiagnosticTool, ReadOnly = true), Description("查看当前聊天工作目录的 ProjectHub 接入状态。")]
+    [McpServerTool(Name = GlobalMcpSession.DiagnosticTool, ReadOnly = true), Description("查看当前聊天工作目录的脉络 Edge 接入状态。")]
     public static object Status(GlobalToolCall call) => new JsonObject { ["status"] = call.Access!.Status, ["message"] = call.Access.Message };
 }

@@ -36,7 +36,8 @@ try
         var copied = HarnessJson.Copy(target, cli, state);
         var node = JsonNode.Parse(copied);
         foreach (var key in target.ServerPath) node = node![key];
-        Check(JsonNode.DeepEquals(node!["projecthub"], target.Entry(cli, state)), target.Name + " 复制格式");
+        Check(JsonNode.DeepEquals(node![EdgeAccessSetup.ServerName], target.Entry(cli, state))
+            && node[EdgeAccessSetup.LegacyServerName] == null, target.Name + " 新配置使用脉络服务名");
         var before = """{"other":{"keep":"中文"}}""";
         var setup = HarnessJson.Inspect(target, before, old, state, out var action);
         Check(action == "接入" && setup.Contains(before[1..]), target.Name + " 首次合并保留其他值");
@@ -54,7 +55,8 @@ try
     File.WriteAllText(agy.ConfigPath, """{"mcpServers":{"unrelated":{"command":"keep"}}}""");
     harnesses.RestoreAntigravity();
     Check(!client.Session.AntigravityReady(current), "没有原接入记录时不擅自启用");
-    var registered = HarnessJson.Inspect(agy, File.ReadAllText(agy.ConfigPath), old, state, out _);
+    var registered = HarnessJson.Inspect(agy, File.ReadAllText(agy.ConfigPath), old, state, out _)
+        .Replace("\"nodicarta\":", "\"projecthub\":");
     File.WriteAllText(agy.ConfigPath, registered);
     harnesses.RestoreAntigravity();
     Check(client.Session.AntigravityReady(current), "此前已接入的用户升级后自动启用目录维护");
@@ -95,9 +97,10 @@ try
     File.WriteAllText(Path.Combine(installRoot, "active-release"), Directory.GetParent(Path.GetDirectoryName(v2)!)!.Name);
     foreach (var target in standard)
     {
-        var legacy = HarnessJson.Copy(target, v1, state);
+        var legacy = HarnessJson.Copy(target, v1, state).Replace("\"nodicarta\":", "\"projecthub\":");
         var migratedEntry = HarnessJson.Inspect(target, legacy, stable, state, out var ready, HarnessEdit.Repair);
-        Check(ready == "已接入" && JsonNode.DeepEquals(JsonNode.Parse(migratedEntry), JsonNode.Parse(HarnessJson.Copy(target, stable, state))),
+        var expected = HarnessJson.Copy(target, stable, state).Replace("\"nodicarta\":", "\"projecthub\":");
+        Check(ready == "已接入" && JsonNode.DeepEquals(JsonNode.Parse(migratedEntry), JsonNode.Parse(expected)),
             target.Name + " 仍存在的同安装旧程序自动迁移");
         Directory.CreateDirectory(Path.GetDirectoryName(target.ConfigPath)!);
         File.WriteAllText(target.ConfigPath, HarnessJson.Copy(target, old, state));
@@ -127,7 +130,7 @@ try
     var global = Directory.CreateDirectory(Path.Combine(profile, "XDG_CONFIG_HOME", "opencode")).FullName;
     var customFile = Environment.GetEnvironmentVariable("OPENCODE_CONFIG")!;
     File.WriteAllText(Path.Combine(global, "opencode.json"), """{"mcp":{"projecthub":{"type":"remote","url":"https://example.test"}}}""");
-    File.WriteAllText(customFile, """{"mcp":{"servers":{"projecthub":{}}}}""");
+    File.WriteAllText(customFile, """{"mcp":{"servers":{"nodicarta":{}}}}""");
     StandardHarness DetectOpenCode() => StandardHarnesses.Detect(() => false).Single(h => h.Id == "opencode");
     Check(DetectOpenCode().BlockedReason != null, "OpenCode 显式文件与默认文件的同名项");
     File.WriteAllText(customFile, "{}");
@@ -139,8 +142,11 @@ try
     File.WriteAllText(Path.Combine(customDir, "opencode.jsonc"), "{}");
     Check(DetectOpenCode().ConfigPath == Path.Combine(customDir, "opencode.jsonc") && DetectOpenCode().BlockedReason != null,
         "显式目录不改写默认配置中的同名项");
-    Environment.SetEnvironmentVariable("OPENCODE_CONFIG_CONTENT", """{"mcp":{"projecthub":{"enabled":false}}}""");
-    Check(DetectOpenCode().BlockedReason?.Contains("OPENCODE_CONFIG_CONTENT") == true, "OpenCode 运行时同名项");
+    foreach (var name in new[] { EdgeAccessSetup.ServerName, EdgeAccessSetup.LegacyServerName })
+    {
+        Environment.SetEnvironmentVariable("OPENCODE_CONFIG_CONTENT", $"{{\"mcp\":{{\"{name}\":{{\"enabled\":false}}}}}}");
+        Check(DetectOpenCode().BlockedReason?.Contains("OPENCODE_CONFIG_CONTENT") == true, "OpenCode 运行时同名项");
+    }
     Console.WriteLine("五个 JSON 适配器通过配置复制、合并、升级、重复接入、冲突保护和 OpenCode JSONC 检查。");
 }
 finally { scratch.Delete(true); }

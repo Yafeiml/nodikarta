@@ -10,7 +10,7 @@ internal static class HarnessJson
     private static JsonSerializerOptions Display => DesktopJson.Display.Options;
 
     internal static string Copy(StandardHarness target, string command, string state) =>
-        Wrap(target.ServerPath.Append("projecthub"), target.Entry(command, state)).ToJsonString(Display);
+        Wrap(target.ServerPath.Append(EdgeAccessSetup.ServerName), target.Entry(command, state)).ToJsonString(Display);
 
     private static JsonNode Wrap(IEnumerable<string> path, JsonNode node)
     {
@@ -22,7 +22,7 @@ internal static class HarnessJson
         HarnessEdit edit = HarnessEdit.Connect, string? retiringCommand = null)
     {
         var desired = target.Entry(command, state);
-        var path = target.ServerPath.Append("projecthub").ToArray();
+        var path = target.ServerPath.Append(EdgeAccessSetup.ServerName).ToArray();
         var options = new JsonDocumentOptions
         {
             AllowDuplicateProperties = false,
@@ -39,7 +39,11 @@ internal static class HarnessJson
         {
             if (reader.TokenType != JsonTokenType.StartObject) throw new InvalidDataException("现有配置的服务器分组格式不正确。");
             var afterBrace = (int)reader.BytesConsumed;
-            if (!FindProperty(ref reader, path[depth], out var propertyStart, out var previousEnd))
+            int propertyStart, previousEnd;
+            var found = depth == path.Length - 1
+                ? FindServerProperty(ref reader, out propertyStart, out previousEnd)
+                : FindProperty(ref reader, path[depth], out propertyStart, out previousEnd);
+            if (!found)
             {
                 action = "接入";
                 if (edit != HarnessEdit.Connect) return text;
@@ -148,6 +152,18 @@ internal static class HarnessJson
             previousEnd = (int)reader.BytesConsumed;
         }
         return false;
+    }
+
+    private static bool FindServerProperty(ref Utf8JsonReader reader, out int propertyStart, out int previousEnd)
+    {
+        var legacy = reader;
+        var found = FindProperty(ref reader, EdgeAccessSetup.ServerName, out propertyStart, out previousEnd);
+        if (!FindProperty(ref legacy, EdgeAccessSetup.LegacyServerName, out var legacyStart, out var legacyPrevious)) return found;
+        if (found) throw new InvalidDataException("配置同时包含新旧脉络接入项，请手动核对。");
+        reader = legacy;
+        propertyStart = legacyStart;
+        previousEnd = legacyPrevious;
+        return true;
     }
 
     private static string Splice(byte[] input, int start, int end, string value) =>

@@ -39,16 +39,22 @@ async function main() {
         await rpc('initialize', { clientInfo: { name: 'nodicarta-sync', version: '1' }, capabilities: { experimentalApi: true } });
         proc.stdin.write(JSON.stringify({ method: 'initialized' }) + '\n');
         const { thread } = await rpc('thread/start', { ephemeral: true, cwd: process.cwd(), sandbox: 'read-only', approvalPolicy: 'never' });
-        const inventory = await rpc('mcpServerStatus/list', { threadId: thread.id, serverName: 'projecthub' });
-        const tools = inventory.data.find(s => s.name === 'projecthub')?.tools;
+        const status = async serverName => {
+            const inventory = await rpc('mcpServerStatus/list', { threadId: thread.id, serverName });
+            return inventory.data.find(entry => entry.name === serverName);
+        };
+        const current = await status('nodicarta');
+        const legacy = await status('projecthub');
+        if (current && legacy) throw new Error('Two Nodicarta MCP entries are configured. Keep only the entry for this workspace before retrying.');
+        const { name: server, tools } = current ?? legacy ?? {};
         if (tools && Object.hasOwn(tools, 'get_edge_status') && !Object.hasOwn(tools, tool)) {
-            const status = await rpc('mcpServer/tool/call', { threadId: thread.id, server: 'projecthub', tool: 'get_edge_status', arguments: {} });
-            const info = status.structuredContent ?? JSON.parse(status.content.find(c => c.type === 'text').text);
+            const diagnostic = await rpc('mcpServer/tool/call', { threadId: thread.id, server, tool: 'get_edge_status', arguments: {} });
+            const info = diagnostic.structuredContent ?? JSON.parse(diagnostic.content.find(c => c.type === 'text').text);
             throw new Error(info.message || 'The current directory could not access a Nodicarta project.');
         }
         if (!tools || !Object.hasOwn(tools, tool))
             throw new Error('This Nodicarta tool is unavailable in the current project.');
-        const result = await rpc('mcpServer/tool/call', { threadId: thread.id, server: 'projecthub', tool, arguments: args });
+        const result = await rpc('mcpServer/tool/call', { threadId: thread.id, server, tool, arguments: args });
         const text = result.content?.find(c => c.type === 'text')?.text;
         if (result.isError) throw new Error(text || 'Edge rejected the tool call.');
         console.log(JSON.stringify(result.structuredContent ?? JSON.parse(text), null, 2));

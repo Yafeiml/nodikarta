@@ -324,7 +324,7 @@ try {
     function Assert-Disconnected($view, [string]$connectName) {
         $null = Wait-Ui 'Codex 已断开' { (ById $view 'HarnessInstall_codex').Current.Name -ceq $connectName }
         if ((ById $view 'HarnessStatus_codex').Current.Name -match '^(已接入|Connected)' -or
-            [IO.File]::ReadAllText($files[0]).Contains('[mcp_servers.projecthub]') -or
+            [IO.File]::ReadAllText($files[0]) -match '\[mcp_servers\.(projecthub|nodicarta)\]' -or
             (Compare-Object $skillHashes (($skillFiles | Get-FileHash).Hash))) {
             throw 'Disconnect did not preserve the expected configuration and shared Skills'
         }

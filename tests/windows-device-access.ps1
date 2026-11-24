@@ -119,7 +119,7 @@ function Check-AntigravityGuidance($access) {
                     throw "Antigravity 接入未完成：$($_.Exception.Message)。界面反馈：$((ById $access 'AccessResult').Current.Name)"
                 }
                 $file = Join-Path $testUserHome '.gemini/config/mcp_config.json'
-                $entry = (Get-Content -Raw -LiteralPath $file | ConvertFrom-Json).mcpServers.projecthub
+                $entry = (Get-Content -Raw -LiteralPath $file | ConvertFrom-Json).mcpServers.nodicarta
                 if ($entry.command -ne $cli -or ($entry.args -join '|') -cne "mcp-stdio-global|--state|$state|--workspace-roots") {
                     throw '单项接入未写入本次设备的 Antigravity 配置。'
                 }
@@ -177,7 +177,7 @@ function Show-DeviceConfig($access,[string]$format) {
 }
 
 function Check-StdioCopy($access,[string]$preview) {
-    $entry = ($preview | ConvertFrom-Json).mcpServers.projecthub
+    $entry = ($preview | ConvertFrom-Json).mcpServers.nodicarta
     if ([IO.Path]::GetFullPath($entry.command) -ne $cli -or
         ($entry.args -join '|') -cne "mcp-stdio-global|--state|$state" -or $entry.PSObject.Properties['cwd']) {
         throw 'STDIO 配置未使用当前客户端工作目录。'
@@ -228,10 +228,10 @@ function Check-HarnessCopies($access) {
             if ($id -eq 'deepseek') { return $text.Contains('@deepseek-ai/dsh-mcp-client') -and $text.Contains($cli) -and $text.Contains($state) }
             try { $doc = $text | ConvertFrom-Json -ErrorAction Stop } catch { return $false }
             if ($id -eq 'opencode') {
-                $entry = $doc.mcp.projecthub
+                $entry = $doc.mcp.nodicarta
                 return $entry.type -eq 'local' -and $entry.command[0] -eq $cli -and $entry.command -contains $state
             }
-            $entry = $doc.mcpServers.projecthub
+            $entry = $doc.mcpServers.nodicarta
             if ($entry.command -ne $cli -or $entry.args -notcontains $state) { return $false }
             switch ($id) {
                 'claude-desktop' { return $entry.args -contains '--workspace-roots' -and $entry.args -notcontains 'CLAUDE_PROJECT_DIR' }

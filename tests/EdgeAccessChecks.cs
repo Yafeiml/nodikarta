@@ -77,6 +77,32 @@ EdgeAccessConfig Select(EdgeAccessContext ctx, EdgeAccessProfile profile, Guid? 
 void Save(EdgeAccessConfig config) => CodexAccessFile.Install(binding, state, config);
 try
 {
+    var setupState = Path.Combine(directory.FullName, "接入 配置");
+    var accessSetup = new EdgeAccessSetup(new EdgeDesktopClient(setupState));
+    var expected = accessSetup.GlobalStdioJson();
+    using (var payload = JsonDocument.Parse(expected))
+    {
+        var servers = payload.RootElement.GetProperty("mcpServers");
+        Check(servers.EnumerateObject().Select(entry => entry.Name).SequenceEqual(new[] { "nodicarta" }),
+            "New global configuration must contain only the Nodicarta entry");
+        var server = servers.GetProperty("nodicarta");
+        Check(Path.IsPathFullyQualified(server.GetProperty("command").GetString()!), "Setup command must be absolute");
+        Check(server.GetProperty("args").EnumerateArray().Select(arg => arg.GetString())
+            .SequenceEqual(new[] { "mcp-stdio-global", "--state", setupState }), "Setup arguments must be device-wide and preserve the state path");
+    }
+    foreach (var english in new[] { false, true })
+    {
+        UiLanguage.Save(setupState, english);
+        var instructions = accessSetup.GlobalSetupInstructions();
+        var body = instructions[..instructions.IndexOf("\n```json\n", StringComparison.Ordinal)];
+        Check(body.StartsWith(english ? "Register" : "请在", StringComparison.Ordinal)
+            && body.Contains("nodicarta", StringComparison.Ordinal)
+            && !body.Contains("projecthub", StringComparison.OrdinalIgnoreCase)
+            && instructions.EndsWith("\n```json\n" + expected + "\n```", StringComparison.Ordinal),
+            "The copied instructions must include the exact MCP configuration in either language");
+    }
+    UiLanguage.Load(state);
+
     foreach (var address in new[] { "http://192.0.2.10:29480", "http://core.example.com:29480", "http://[2001:db8::2]:29480", "http://127.0.0.1:29480", "https://core.example" })
         Check(EdgeDesktopClient.ParseCoreAddress(address) == new Uri(address), "HTTP and HTTPS Core origins accepted");
     foreach (var address in new[] { "ftp://core.example.com", "http://user:pass@core.example.com", "http://core.example.com/devices", "http://core.example.com/?key=1", "https://core.example.com/#devices", "192.0.2.10:29480" })
@@ -89,7 +115,7 @@ try
     var basic = Select(context, EdgeAccessProfile.Knowledge);
     string[] special = [@"C:\中文📁\O'Brien\Edge.exe", "引号\"反斜杠\\及补充字符🚀", @"\uD83D\uDE00 是文字"];
     var escaped = TomlSerializer.Deserialize<TomlTable>(CodexAccessFile.Format(special[0], special, basic.Tools))!;
-    var table = (TomlTable)((TomlTable)escaped["mcp_servers"])["projecthub"];
+    var table = (TomlTable)((TomlTable)escaped["mcp_servers"])["nodicarta"];
     Check((string)table["command"] == special[0] && ((TomlArray)table["args"]).Cast<string>().SequenceEqual(special),
         "TOML round trip for non-BMP characters, apostrophes, quotes and literal backslashes");
     Check(all.Tools.Length == 17 && basic.Tools.Length == 5, "full and legacy tool counts");
@@ -120,7 +146,7 @@ try
     Refuses(() => Select(context, EdgeAccessProfile.Tasks, Guid.NewGuid()));
     using (var json = JsonDocument.Parse(all.StdioJson))
     {
-        var jsonArgs = json.RootElement.GetProperty("mcpServers").GetProperty("projecthub").GetProperty("args").EnumerateArray();
+        var jsonArgs = json.RootElement.GetProperty("mcpServers").GetProperty("nodicarta").GetProperty("args").EnumerateArray();
         Check(jsonArgs.Select(x => x.GetString()).SequenceEqual(all.Arguments), "JSON argument round trip");
     }
     var preamble = "model = \"user-model\"\r\n# 用户的其他服务\r\n[mcp_servers.documents]\r\ncommand = 'C:\\bin\\documents.exe'\r\n";
@@ -166,7 +192,9 @@ try
     Check(CodexAccessFile.Status(binding, state).Contains("5 个知识"), "known legacy profile recognized");
     Check(CodexAccessFile.Read(binding,state).ToolLimit?.Length == 5, "preserve legacy tool boundary when choosing automatically");
     Save(all);
-    Check(File.ReadAllText(file).StartsWith(preamble) && File.ReadAllText(file).EndsWith(added), "surgical legacy upgrade");
+    var upgradedLegacy = File.ReadAllText(file);
+    Check(upgradedLegacy.StartsWith(preamble) && upgradedLegacy.EndsWith(added)
+        && upgradedLegacy.Contains("[mcp_servers.projecthub]") && !upgradedLegacy.Contains("[mcp_servers.nodicarta]"), "surgical legacy upgrade preserves the server name");
     var otherProject = File.ReadAllText(file).Replace(project.ProjectId.ToString(), Guid.NewGuid().ToString());
     File.WriteAllText(file, otherProject);
     Refuses(() => Save(basic));

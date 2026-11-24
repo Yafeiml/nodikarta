@@ -38,8 +38,9 @@ try
             foreach (var parent in target.ServerPath.Reverse()) properties = "\"" + parent + "\":{" + properties + "}";
             return "{" + properties + "}";
         }
-        foreach (var fields in new[] { $"\"projecthub\":{entry}", $"\"projecthub\":{entry},\"b\":2",
-                    $"\"a\":1,\"projecthub\":{entry},\"b\":2", $"\"a\":1,\"projecthub\":{entry}" })
+        foreach (var name in new[] { EdgeAccessSetup.ServerName, EdgeAccessSetup.LegacyServerName })
+        foreach (var fields in new[] { $"\"{name}\":{entry}", $"\"{name}\":{entry},\"b\":2",
+                    $"\"a\":1,\"{name}\":{entry},\"b\":2", $"\"a\":1,\"{name}\":{entry}" })
         {
             var original = Wrap(fields);
             File.WriteAllText(target.ConfigPath, original, new UTF8Encoding(true));
@@ -47,7 +48,7 @@ try
             await access.DisconnectAsync(target.Id, default);
             var bytes = File.ReadAllBytes(target.ConfigPath);
             var result = File.ReadAllText(target.ConfigPath);
-            Check(bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble) && !result.Contains("\"projecthub\""), target.Name + " removed with BOM intact");
+            Check(bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble) && !result.Contains($"\"{name}\""), target.Name + " removed with BOM intact");
             var node = JsonNode.Parse(result);
             foreach (var key in target.ServerPath) node = node![key];
             Check(node!.AsObject().Count == fields.Count(c => c == ':') - entry.Count(c => c == ':') - 1, "sibling count");
@@ -70,6 +71,7 @@ try
             Check(File.ReadAllText(target.ConfigPath) == userNote, "custom comment inside the registration survives");
         }
         foreach (var conflict in new[] { Wrap("\"projecthub\":{\"command\":\"custom\"}"),
+                     Wrap($"\"nodicarta\":{entry},\"projecthub\":{entry}"),
                      HarnessJson.Copy(target, command, state + "-another") })
         {
             File.WriteAllText(target.ConfigPath, conflict);
@@ -101,9 +103,14 @@ try
 
     var patch = Path.Combine(Environment.GetEnvironmentVariable("DSH_HOME")!, "cordis.patch.yml");
     Directory.CreateDirectory(Path.GetDirectoryName(patch)!);
+    foreach (var name in new[] { EdgeAccessSetup.ServerName, EdgeAccessSetup.LegacyServerName })
     foreach (var baseline in new[] { "", "# note\n", "# 配置 🎨\r\n- id: mine\r\n", "---\n  - id: mine\n...\n", "[]", "[{id: mine}] # keep" })
     {
-        File.WriteAllText(patch, SpecialHarnesses.Change(baseline, command, state, out _));
+        var installed = SpecialHarnesses.Change(baseline, command, state, out _);
+        Check(installed.Contains("serverName: nodicarta"), "fresh DeepSeek setup uses the current server name");
+        var entryId = name == EdgeAccessSetup.ServerName ? "nodicarta-edge" : "projecthub-edge";
+        File.WriteAllText(patch, installed.Replace("id: nodicarta-edge", "id: " + entryId)
+            .Replace("serverName: nodicarta", "serverName: " + name));
         Check(access.Inspect().Single(r => r.Id == "deepseek").CanDisconnect, "DeepSeek offers disconnect");
         await access.DisconnectAsync("deepseek", default);
         Check(File.ReadAllText(patch) == baseline, "DeepSeek preserves block and flow style: " + baseline);
@@ -156,7 +163,7 @@ try
     await Reject(() => access.DisconnectAsync("antigravity", default));
     var maintenance = dbSession.AntigravityMaintenance();
     Check(maintenance.Enabled == null && maintenance.Disabled == command && maintenance.Pending && !File.Exists(plugin)
-        && File.ReadAllText(guide).EndsWith("User edits") && !File.ReadAllText(agy.ConfigPath).Contains("projecthub"),
+        && File.ReadAllText(guide).EndsWith("User edits") && !File.ReadAllText(agy.ConfigPath).Contains("\"nodicarta\""),
         "global disconnect retires owned files and persists retry for the edited file");
     Check(access.Inspect().Single(r => r.Id == agy.Id) is { ActionText: "待核对", CanDisconnect: false, CanInstall: false },
         "pending directory cleanup retries automatically without prompting for another disconnect");
@@ -170,9 +177,9 @@ try
     Check(File.ReadAllText(agy.ConfigPath) == HarnessJson.Copy(agy, command, state) && dbSession.AntigravityReady(command),
         "an explicitly restored same-state Antigravity entry migrates to the new location and re-enables workspace maintenance");
     dbSession.PrepareAntigravityDisconnect(command); // process exited before committing the global edit
-    Check(dbSession.AntigravityMaintenance().RegistrationPending && File.ReadAllText(agy.ConfigPath).Contains("projecthub"), "interrupted fixture");
+    Check(dbSession.AntigravityMaintenance().RegistrationPending && File.ReadAllText(agy.ConfigPath).Contains("\"nodicarta\""), "interrupted fixture");
     access.RestoreAntigravity();
-    Check(!dbSession.AntigravityMaintenance().RegistrationPending && !File.ReadAllText(agy.ConfigPath).Contains("projecthub"), "startup completes interrupted removal");
+    Check(!dbSession.AntigravityMaintenance().RegistrationPending && !File.ReadAllText(agy.ConfigPath).Contains("\"nodicarta\""), "startup completes interrupted removal");
     foreach (var row in access.Inspect().Where(r => r.CanDisconnect))
         await access.DisconnectAsync(row.Id, default);
     for (int i = 0; i < 2; i++) access.MigrateInstalledCommands(verifyWorkspaces: false);
@@ -195,7 +202,7 @@ try
             }
             finally { Environment.SetEnvironmentVariable("USERPROFILE", profileRoot); }
             access.RestoreAntigravity(verifyWorkspaces: false);
-            Check(!dbSession.AntigravityMaintenance().RegistrationPending && !File.ReadAllText(agy.ConfigPath).Contains("projecthub"),
+            Check(!dbSession.AntigravityMaintenance().RegistrationPending && !File.ReadAllText(agy.ConfigPath).Contains("\"nodicarta\""),
                 "after moving Edge a recorded disconnect completes even when the old executable is inaccessible");
         }
         access.MigrateInstalledCommands(verifyWorkspaces: false);

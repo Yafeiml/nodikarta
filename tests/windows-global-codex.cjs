@@ -7,6 +7,7 @@ const path = require('node:path');
 const {randomUUID} = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const {lines} = require('./windows-mcp.cjs');
+const server = 'nodicarta';
 
 async function verify() {
     const [desktop, address, codex] = process.argv.slice(2);
@@ -45,6 +46,7 @@ async function verify() {
         const config = fs.readFileSync(path.join(profile,'config.toml'),'utf8');
         run(desktop, ['--connect-codex','--state',state]);
         assert.equal(fs.readFileSync(path.join(profile,'config.toml'),'utf8'), config);
+        assert(config.includes(`[mcp_servers.${server}]`) && !config.includes('[mcp_servers.projecthub]'));
         assert(!config.includes(write.projectId) && !config.includes(read.projectId));
         for (const dir of [a,b]) {
             assert(!fs.existsSync(path.join(dir,'.codex','config.toml')));
@@ -60,7 +62,7 @@ async function verify() {
             threads.push(thread.id);
         }
         const call = async (index,tool,args={}) => {
-            const data = await client.call('mcpServer/tool/call',{threadId:threads[index],server:'projecthub',tool,arguments:args});
+            const data = await client.call('mcpServer/tool/call',{threadId:threads[index],server,tool,arguments:args});
             assert(!data.isError, data.content?.[0]?.text);
             return data.structuredContent ?? JSON.parse(data.content.find(c=>c.type==='text').text);
         };
@@ -70,15 +72,15 @@ async function verify() {
             assert.equal(items[0].workspaceRelativeDirectory, index === 0 ? 'src' : '.');
         }
         const inventory = async index => {
-            const result = await client.call('mcpServerStatus/list',{threadId:threads[index],serverName:'projecthub'});
-            return Object.keys(result.data.find(s=>s.name==='projecthub').tools);
+            const result = await client.call('mcpServerStatus/list',{threadId:threads[index],serverName:server});
+            return Object.keys(result.data.find(s=>s.name===server).tools);
         };
         assert(!(await inventory(1)).includes('submit_knowledge_commit'));
         assert.deepEqual(await inventory(2),['get_edge_status']);
         const diagnostic = await call(2,'get_edge_status');
         assert(diagnostic.message && !JSON.stringify(diagnostic).includes(write.projectId));
         const title = 'global-codex-qa-'+randomUUID();
-        const denied = await client.call('mcpServer/tool/call',{threadId:threads[1],server:'projecthub',
+        const denied = await client.call('mcpServer/tool/call',{threadId:threads[1],server,
             tool:'submit_knowledge_commit',arguments:{requestId:randomUUID(),title,body:'Read-only write check',evidence:'isolated Windows acceptance'}});
         assert.equal(denied.isError,true,'Read-only directory accepted a write');
         await call(0,'submit_knowledge_commit',{requestId:randomUUID(),title,body:'Temporary acceptance data',evidence:'isolated Windows acceptance'});
@@ -99,7 +101,7 @@ async function verify() {
         fs.writeFileSync(file,'Keep my work');
         run(cli,['--state',state,'unbind','--project',write.projectId,'--workspace',workspace.workspaceId,'--path',a]);
         assert.deepEqual(edge('bindings').map(row=>row.localPath),[b]);
-        const oldSessionDenied = () => client.call('mcpServer/tool/call',{threadId:threads[0],server:'projecthub',
+        const oldSessionDenied = () => client.call('mcpServer/tool/call',{threadId:threads[0],server,
             tool:'get_project_snapshot',arguments:{}});
         assert.equal((await oldSessionDenied()).isError,true);
         assert.equal((await call(1,'list_projects')).items[0].projectId,read.projectId);
@@ -113,7 +115,7 @@ async function verify() {
         assert.equal(fs.readFileSync(path.join(profile,'config.toml'),'utf8'),config);
         run(desktop,['--disconnect-codex','--state',state]);
         const disconnected=fs.readFileSync(path.join(profile,'config.toml'),'utf8');
-        assert(disconnected.includes('# Preserve user configuration') && !disconnected.includes('[mcp_servers.projecthub]'));
+        assert(disconnected.includes('# Preserve user configuration') && !disconnected.includes(`[mcp_servers.${server}]`));
         assert(expected.every(name=>!fs.existsSync(path.join(user,'.agents','skills',name))));
         assert.equal(edge('bindings').length,2);
         console.log('PASS: real Codex with five global skills, two isolated projects, bound subdirectory, read-only scope, unbound directory, live chat loses access on unbind, fresh chat resolves reassigned directory, files and global config preserved.');

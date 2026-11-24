@@ -45,7 +45,7 @@ public sealed class CodexRuntime
         var left = 101 + taskId.ToByteArray()[0];
         var right = 27 + attemptId.ToByteArray()[0];
         var answer = (left + right).ToString(CultureInfo.InvariantCulture);
-        return new(FormattableString.Invariant($"ProjectHub 已绑定会话的投递验证。任务 {taskId:D}，尝试 {attemptId:D}。请心算 {left} + {right}，仅回复十进制整数。请勿使用工具或操作文件。"),
+        return new(FormattableString.Invariant($"脉络已绑定会话的投递验证。任务 {taskId:D}，尝试 {attemptId:D}。请心算 {left} + {right}，仅回复十进制整数。请勿使用工具或操作文件。"),
             text => text == answer);
     }
 
@@ -62,7 +62,7 @@ public sealed class CodexRuntime
             "retrievalResultCount" => "项目知识检索命中的记录数",
             _ => throw new ArgumentException("不支持此类观测。", nameof(value))
         };
-        var message = FormattableString.Invariant($"ProjectHub 只读业务分析。任务 {taskId:D}，尝试 {attemptId:D}。观测指标为“{metric}”，预期 {value.Expected}，实际 {value.Observed}。只根据这些数据，说明该观测能证明什么、有什么局限，并给出一个下一步核对建议。无需调用任何工具。仅返回含“诊断”和“建议”两个字符串的 JSON 对象，不使用 Markdown。");
+        var message = FormattableString.Invariant($"脉络只读业务分析。任务 {taskId:D}，尝试 {attemptId:D}。观测指标为“{metric}”，预期 {value.Expected}，实际 {value.Observed}。只根据这些数据，说明该观测能证明什么、有什么局限，并给出一个下一步核对建议。无需调用任何工具。仅返回含“诊断”和“建议”两个字符串的 JSON 对象，不使用 Markdown。");
         return new(message, text =>
         {
             if (text.Length > 2000) return false;
@@ -183,7 +183,7 @@ public sealed class CodexRuntime
 
     private async Task VerifyBindingAsync(History reader, CancellationToken ct)
     {
-        await reader.CallAsync("initialize", new JsonObject { ["clientInfo"] = new JsonObject { ["name"] = "projecthub-edge", ["version"] = "1" } }, ct);
+        await reader.CallAsync("initialize", new JsonObject { ["clientInfo"] = new JsonObject { ["name"] = "nodicarta-edge", ["version"] = "1" } }, ct);
         await reader.NotifyInitializedAsync(ct);
         var meta = await reader.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = false }, ct);
         var thread = meta.GetProperty("thread");

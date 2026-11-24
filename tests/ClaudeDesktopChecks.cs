@@ -32,7 +32,7 @@ try
     var access = new HarnessAccess(new EdgeDesktopClient(state), () => false, () => packaged);
     StandardHarness Desktop() => StandardHarnesses.Detect(() => packaged).Single(t => t.Id == "claude-desktop");
     HarnessRow Row(string id) => access.Inspect().Single(row => row.Id == id);
-    static string Executable(string config) => JsonNode.Parse(config)!["mcpServers"]!["projecthub"]!["command"]!.GetValue<string>();
+    static string Executable(string config) => JsonNode.Parse(config)!["mcpServers"]![EdgeAccessSetup.ServerName]!["command"]!.GetValue<string>();
 
     Check(Desktop().Detected && Desktop().BlockedReason != null && !Row("claude-desktop").CanBatchInstall,
         "A registered package before first launch is installed and waits for a profile.");
@@ -65,7 +65,7 @@ try
     foreach (var (file, copy) in new[] { (cliFile, cliCopy), (currentPackagedFile, desktopCopy) })
     {
         var config = JsonNode.Parse(File.ReadAllText(file))!;
-        Check(JsonNode.DeepEquals(config["mcpServers"]!["projecthub"], JsonNode.Parse(copy)!["mcpServers"]!["projecthub"]),
+        Check(JsonNode.DeepEquals(config["mcpServers"]![EdgeAccessSetup.ServerName], JsonNode.Parse(copy)!["mcpServers"]![EdgeAccessSetup.ServerName]),
             "Each saved connection matches its own copy.");
         Check(config["preferences"]!["theme"]!.GetValue<string>() == "dark" && config["mcpServers"]!["other"]!["command"]!.GetValue<string>() == "keep",
             "Unrelated preferences and servers survive the merge.");

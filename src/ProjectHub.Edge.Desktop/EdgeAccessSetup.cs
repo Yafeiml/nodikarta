@@ -22,7 +22,13 @@ internal sealed record EdgeAccessConfig(string Command, string[] Arguments, stri
 
 internal sealed class EdgeAccessSetup(EdgeDesktopClient client)
 {
+    internal const string ServerName = "nodicarta";
+    internal const string LegacyServerName = "projecthub";
     private readonly EdgeSession session = client.Session;
+    private static string StdioCommand => OperatingSystem.IsLinux()
+        ? Path.Combine(AppContext.BaseDirectory, "ProjectHub.Edge")
+        : GlobalCodexAccess.CurrentCommand;
+
     internal static string[] GlobalArguments(string state) => ["mcp-stdio-global", "--state", state];
     internal static string StdioJson(string command, IEnumerable<string> args)
     {
@@ -31,19 +37,31 @@ internal sealed class EdgeAccessSetup(EdgeDesktopClient client)
             ["command"] = command,
             ["args"] = JsonSerializer.SerializeToNode(args.ToArray(), DesktopJson.Default.StringArray)
         };
-        var servers = new JsonObject { ["projecthub"] = server };
+        var servers = new JsonObject { [ServerName] = server };
         return new JsonObject { ["mcpServers"] = servers }.ToJsonString(DesktopJson.Display.Options);
     }
-    internal string GlobalStdioJson() =>
-        StdioJson(GlobalCodexAccess.CurrentCommand, GlobalArguments(client.StateDirectory));
+    internal string GlobalStdioJson() => StdioJson(StdioCommand, GlobalArguments(client.StateDirectory));
+
+    internal string GlobalSetupInstructions() => UiLanguage.Text(
+        $"""
+        请在当前使用的本机客户端中，把下面的 {ServerName} 注册为全局 STDIO MCP。使用客户端支持的添加命令或配置格式，原样保留 command 和 args。先检查现有接入。如果已有条目使用同一命令和参数，就沿用该条目。若同名条目使用不同配置，请先告诉我。保留其他配置，接入时使用全局设置。
+
+        如果无法修改本机配置，请告诉我应该打开哪个设置页面，以及如何填入下面的值。配置后请尝试重新加载 MCP 并检查工具列表。如果需要我重启客户端，或者需要在 Edge 中绑定当前目录，请告诉我。
+        """,
+        $"""
+        Register {ServerName} below as a global STDIO MCP server in your current local client. Use the client's supported MCP command or configuration format and preserve command and args exactly. Check existing entries first. Reuse any entry with the same command and arguments. If the same name already has different settings, ask me first. Keep other settings and use global scope.
+
+        If you cannot change the local configuration, tell me which settings page to open and how to enter the values below. After configuring it, try reloading MCP and listing the tools. Tell me if I need to restart the client or link the current folder in Edge.
+        """) + "\n\n```json\n" + GlobalStdioJson() + "\n```";
 
     public async Task<EdgeAccessContext> LoadAsync(DeviceProject project, LocalBinding binding, CancellationToken ct = default)
     {
         var snapshot = await client.RefreshAsync(ct);
         var current = snapshot.Projects.SingleOrDefault(p => p.ProjectId == project.ProjectId && p.BindingId == project.BindingId)
             ?? throw new InvalidOperationException("此项目的设备授权已更改，请刷新主界面。");
+        var pathCase = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         var directory = snapshot.Bindings.SingleOrDefault(b => b.ProjectId == current.ProjectId && b.BindingId == current.BindingId
-            && b.WorkspaceId == binding.WorkspaceId && string.Equals(b.LocalPath, binding.LocalPath, StringComparison.OrdinalIgnoreCase))
+            && b.WorkspaceId == binding.WorkspaceId && string.Equals(b.LocalPath, binding.LocalPath, pathCase))
             ?? throw new InvalidOperationException("当前目录的项目绑定已更改，请刷新主界面。");
         if (!Directory.Exists(directory.LocalPath)) throw new DirectoryNotFoundException("绑定的本机目录已移动或无法访问。");
 
@@ -61,14 +79,16 @@ internal sealed class EdgeAccessSetup(EdgeDesktopClient client)
             };
             return new(current, directory, endpoints, description, policy.Tools, policy.EndpointId);
         }
+        if (!OperatingSystem.IsWindows()) return new(current, directory, endpoints, "");
         var existing = CodexAccessFile.Read(directory, session.StateDirectory);
         return new(current, directory, endpoints, existing.Label, existing.Block == "" ? [] : existing.ToolLimit, existing.Endpoint);
     }
 
     public EdgeAccessConfig Build(EdgeAccessContext context, EdgeAccessProfile profile, Guid? endpointId = null)
     {
-        var command = GlobalCodexAccess.CurrentCommand;
-        if (!File.Exists(command)) throw new FileNotFoundException("找不到桌面版随附的 ProjectHub.Edge.exe，请核对安装目录。");
+        var command = StdioCommand;
+        if (!File.Exists(command))
+            throw new FileNotFoundException("找不到桌面版随附的 Edge 命令行程序，请核对安装目录。", command);
         session.EnsureActiveProfile();
         return CreateConfig(context, profile, endpointId, command, session.StateDirectory);
     }

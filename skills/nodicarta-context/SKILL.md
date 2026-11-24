@@ -1,6 +1,6 @@
 ---
 name: nodicarta-context
-description: Recover earlier project work and the reasons behind decisions in nodicarta (脉络). Use for requests such as “用脉络找回上次的决定”, “继续做上次那张宣传画”, or “find the previous decision in nodicarta”.
+description: Recover earlier project work and the reasons behind decisions in Nodicarta (脉络). Use for requests such as “用脉络找回上次的决定”, “继续做上次那张宣传画”, or “find the previous decision in Nodicarta”.
 ---
 
 Call `list_projects` to check which project this chat is connected to. With global Codex access, Edge resolves the project from the chat's working directory. If only `get_edge_status` is available, read the reason. Ask the user to bind or adjust the directory in Edge when needed.

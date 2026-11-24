@@ -67,9 +67,10 @@ try
         "existing managed configuration remains visible without a detected launcher");
     var saved = File.ReadAllBytes(globals);
     var installed = File.ReadAllText(globals);
-    Check(saved.AsSpan().StartsWith(initial) && installed.Contains("mcp-stdio-global") && !installed.Contains("--project") &&
+    Check(saved.AsSpan().StartsWith(initial) && installed.Contains("[mcp_servers.nodicarta]") &&
+        !installed.Contains("[mcp_servers.projecthub]") && installed.Contains("mcp-stdio-global") && !installed.Contains("--project") &&
         !installed.Contains("enabled_tools") && !installed.Contains("cwd ="), "user config BOM/content and cwd routing");
-    Check(File.ReadAllText(localFile).Contains("keep = true") && !File.ReadAllText(localFile).Contains("mcp_servers.projecthub"), "scoped block migration");
+    Check(File.ReadAllText(localFile).Contains("keep = true") && !File.ReadAllText(localFile).Contains("[mcp_servers."), "scoped block migration");
     var stored = client.Session.GetWorkspacePolicy(binding);
     Check(stored?.Tools != null && stored.Tools.ToHashSet().SetEquals(legacy.Tools) && stored.EndpointId == endpoint.Id, "preserve manual limit and endpoint offline");
     Check(File.ReadAllText(CodexAccessFile.ConfigPath(custom)) == foreign && client.Session.GetWorkspacePolicy(custom)?.Tools?.Length == 0, "protect custom config");
@@ -96,6 +97,17 @@ try
     Check(File.ReadAllText(globals) == foreign, "global config custom kept");
     await service.CleanForReconnectAsync();
     Check(File.ReadAllText(globals) == foreign && File.Exists(customSkill), "disconnect preserves foreign global entry and customized user Skill");
+    var manual = "[mcp_servers.nodicarta]\ncommand = " + JsonSerializer.Serialize(exe) +
+        "\nargs = " + JsonSerializer.Serialize(EdgeAccessSetup.GlobalArguments(client.StateDirectory)) + "\n";
+    foreach (var userConfig in new[] { manual, service.ConfigToml() + "\n" + foreign })
+    {
+        File.WriteAllText(globals, userConfig);
+        Check(service.InspectHarness(true) is { ActionText: "待核对", CanInstall: false, CanDisconnect: false }
+            && !service.RepairMissingCommand(), "manual or duplicate connection must remain user-owned");
+        try { await service.ConnectHarnessAsync(default); throw new Exception("accepted user-owned configuration"); }
+        catch (InvalidDataException) { }
+        Check(File.ReadAllText(globals) == userConfig, "connecting preserves manual or duplicate entries");
+    }
     var separateBin = Directory.CreateDirectory(Path.Combine(tmp.FullName, "other portable", "bin")).FullName;
     var separateCommand = Path.Combine(separateBin, "ProjectHub.Edge.exe");
     File.WriteAllText(separateCommand, "independent portable binary");
@@ -105,7 +117,7 @@ try
     File.WriteAllText(globals, existingText);
     await service.InstallAsync();
     await service.CleanForReconnectAsync();
-    Check(!File.ReadAllText(localFile).Contains("mcp_servers.projecthub") && File.ReadAllText(localFile).Contains("keep = true"),
+    Check(!File.ReadAllText(localFile).Contains("[mcp_servers.") && File.ReadAllText(localFile).Contains("keep = true"),
         "global Codex migrates the same-state managed project configuration even while its previous executable exists");
     var installRoot = Directory.CreateDirectory(Path.Combine(tmp.FullName, "managed")).FullName;
     string Release(string id)
@@ -118,7 +130,7 @@ try
     var oldExe = Release("123456789abc");
     var newExe = Release("0123456789ab");
     var alternateState = Path.Combine(tmp.FullName, "alternative state");
-    var originalBlock = CodexAccessFile.Format(oldExe, ["mcp-stdio-global", "--state", alternateState], [], true);
+    var originalBlock = CodexAccessFile.Format(oldExe, ["mcp-stdio-global", "--state", alternateState], [], true, EdgeAccessSetup.LegacyServerName);
     var oldConfig = existingText + originalBlock + "\n";
     File.WriteAllText(globals, oldConfig);
     var moved = new GlobalCodexAccess(new EdgeDesktopClient(alternateState), codex, profile, newExe);
@@ -134,7 +146,8 @@ try
         moved.InspectHarness(true) is { IsConnected: true, CanBatchInstall: false },
         "existing Codex connection stays connected even without a detected launcher");
     var refreshed = File.ReadAllText(globals);
-    Check(refreshed.StartsWith(existingText) && refreshed.Contains("0123456789ab") && refreshed.Contains("alternative state")
+    Check(refreshed.StartsWith(existingText) && refreshed.Contains("[mcp_servers.projecthub]") &&
+        !refreshed.Contains("[mcp_servers.nodicarta]") && refreshed.Contains("0123456789ab") && refreshed.Contains("alternative state")
         && !refreshed.Contains("123456789abc") && !Directory.Exists(missingSkill),
         "automatic relocation changes the managed target without reinstalling Skills or changing user settings");
     File.WriteAllText(globals, oldConfig);
@@ -167,6 +180,10 @@ try
     File.Copy(Path.Combine(AppContext.BaseDirectory, "skills", "nodicarta-context", "SKILL.md"), globalForeignSkill);
     await service.CleanForReconnectAsync();
     Check(File.ReadAllText(globals) == refreshed && File.Exists(globalForeignSkill), "other Edge state survives cleanup");
+    await moved.ConnectHarnessAsync(default);
+    Check(File.ReadAllText(globals) == refreshed, "reconnecting an owned legacy entry keeps its original name and bytes");
+    moved.DisconnectHarness();
+    Check(File.ReadAllText(globals).TrimEnd() == existingText.TrimEnd(), "disconnect removes an owned legacy entry alone");
 
     var managedRoot = Directory.CreateDirectory(Path.Combine(tmp.FullName, "normal installation")).FullName;
     var stable = Path.Combine(managedRoot, "ProjectHub.Edge.exe");
@@ -239,7 +256,7 @@ try
         File.WriteAllBytes(stable, launcherBytes);
     }
     File.WriteAllBytes(globals, [0xff, 0x9f]);
-    GlobalCodexAccess.RefreshManagedCommand(installRoot, newExe, globals);
+    GlobalCodexAccess.RefreshManagedCommand(installRoot, newExe, globals, alternateState);
     Check(File.ReadAllBytes(globals).SequenceEqual(new byte[] { 0xff, 0x9f }), "foreign encoding survives upgrade");
     Console.WriteLine("PASS: isolated user setup, BOM/foreign config, five Skills, offline migration, explicit endpoint, concurrent retry, clean and reconnect.");
 }

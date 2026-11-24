@@ -1,6 +1,6 @@
 ---
 name: nodicarta-init
-description: Initialize or refresh knowledge and asset indexes from an existing project in nodicarta (脉络). Use for “用脉络初始化项目资料”, “初始化知识库”, “初始化资料库”, or “initialize this project in nodicarta”.
+description: Initialize or refresh knowledge and asset indexes from an existing project in Nodicarta (脉络). Use for “用脉络初始化项目资料”, “初始化知识库”, “初始化资料库”, or “initialize this project in Nodicarta”.
 ---
 
 Work in the current project. Honor any directories or files the user specified and any request for a preview.
