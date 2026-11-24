@@ -20,7 +20,8 @@ bin_dir = Path(sys.argv[1]).resolve().parent
 proof = Path(sys.argv[2]).resolve()
 proof.mkdir(parents=True, exist_ok=True)
 assets = repo / 'src/ProjectHub.Edge.Desktop/Assets'
-sources = {k: next((repo / '素材').glob(pattern)) for k,pattern in [('standard','*Brand Mark*'),('micro','*Micro Mark*')]}
+brand_dir = repo / 'docs/design/brand'
+sources = {'standard': brand_dir / 'nodicarta.svg', 'micro': brand_dir / 'nodicarta-micro.svg'}
 sizes = [16,20,24,32,40,48,64,96,128,256]
 svg_files = {'standard': 'edge.svg', 'micro': 'edge-micro.svg'}
 
