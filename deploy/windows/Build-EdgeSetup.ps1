@@ -16,7 +16,7 @@ Assert-EdgeSetupTrust $bin $Version $TestScope.IsPresent
 $out = [IO.Directory]::CreateDirectory($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)).FullName
 $setup = Join-Path $out "Nodicarta-Edge-$Version-win-x64-setup.exe"
 $staging = Join-Path $out ('.' + [Guid]::NewGuid().ToString('N') + '.tmp.exe')
-$options = @('/V2', "/DPACKAGE=$package", "/DOUTPUT=$staging", "/DVERSION=$Version",
+$options = @('/V2', '/INPUTCHARSET', 'UTF8', "/DPACKAGE=$package", "/DOUTPUT=$staging", "/DVERSION=$Version",
     "/DAPP_ICON=$((Get-Item -LiteralPath (Join-Path $PSScriptRoot '../../src/ProjectHub.Edge.Desktop/Assets/edge.ico')).FullName)")
 if ($TestScope) { $options += '/DFIXTURE' }
 $compiler = Get-Command 'makensis.exe' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source

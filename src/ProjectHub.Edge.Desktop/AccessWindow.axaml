@@ -133,7 +133,7 @@
                 </Grid>
                 <WrapPanel x:Name="DeviceAccessTabs" Classes="pillGroup" AutomationProperties.AutomationId="AccessMethods">
                   <Button x:Name="ClientsFormat" Classes="pill current" Content="{desktop:Tr '常用客户端'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatClients"/>
-                  <Button x:Name="StdioFormat" Classes="pill" Content="{desktop:Tr '其他客户端 · STDIO'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatStdio"/>
+                  <Button x:Name="StdioFormat" Classes="pill" Content="{desktop:Tr '其他客户端 · MCP'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatStdio"/>
                   <Button x:Name="SkillsFormat" Classes="pill" Content="{desktop:Tr '通用 Skills'}" Click="SwitchFormat" AutomationProperties.AutomationId="ConfigFormatSkills"/>
                 </WrapPanel>
                 <Border x:Name="HarnessPanel" Classes="connection" Background="White" BorderBrush="{StaticResource ClientListLine}"
@@ -184,12 +184,12 @@
                 <Border x:Name="StdioPanel" Classes="connection" IsVisible="False">
                   <StackPanel Spacing="13">
                     <StackPanel Spacing="5">
-                      <TextBlock Text="{desktop:Tr 'STDIO 客户端配置'}" FontSize="17" FontWeight="SemiBold"/>
+                      <TextBlock Text="{desktop:Tr 'MCP 客户端配置'}" FontSize="17" FontWeight="SemiBold"/>
                       <TextBlock x:Name="StdioHelp" Classes="muted"/>
                     </StackPanel>
                     <WrapPanel ItemSpacing="7" LineSpacing="5">
                       <Button x:Name="CopySetupButton" Classes="primary" Content="{desktop:Tr '复制接入指令'}" Click="CopySetup" AutomationProperties.AutomationId="CopySetupButton"/>
-                      <Button x:Name="CopyConfigButton" Classes="aux" Content="{desktop:Tr '复制 STDIO 配置'}" Click="CopyConfig" AutomationProperties.AutomationId="CopyConfigButton"/>
+                      <Button x:Name="CopyConfigButton" Classes="aux" Content="{desktop:Tr '复制 MCP 配置'}" Click="CopyConfig" AutomationProperties.AutomationId="CopyConfigButton"/>
                       <Button x:Name="ToggleConfigButton" Classes="aux" Click="ToggleConfig" AutomationProperties.AutomationId="ToggleAccessConfig"/>
                     </WrapPanel>
                     <Border x:Name="DeviceConfigPanel" Background="White" CornerRadius="6" BorderBrush="#D8E2EB" BorderThickness="1" Padding="11,8" IsVisible="False">

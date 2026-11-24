@@ -6,7 +6,7 @@ Download `Nodicarta-Edge-1.1.1-win-x64-setup.exe` from the project's GitHub Rele
 
 Open **Settings** to the left of **Language** in the title bar to manage sign-in startup and automatic Edge updates. Sign-in startup is enabled on a new installation and opens only the tray icon. Click the icon to open the window. The installer preserves your selection across upgrades.
 
-The release installation checks the stable channel automatically. When a newer release is available, close to the tray to allow Edge to verify the publisher's signature and install the update. Shared Skills have a separate update preference on the Skills tab. To migrate from a higher-numbered development build, start the public setup and confirm the migration. To uninstall, use Windows **Installed apps**. Device data is retained.
+The release installation checks the stable channel automatically. When a newer release is available, close to the tray to allow Edge to verify the publisher's signature and install the update. Shared Skills have a separate update preference on the Skills tab. To migrate from a higher-numbered development build, start the public setup and confirm the migration. To uninstall, use Windows **Installed apps**. Uninstall stops this installation's running Edge CLI and MCP sessions and interrupts their active requests. Device data and AI client configurations are retained.
 
 Edge Desktop stores its device identity, linked folders, unsent records and language preference in `%LOCALAPPDATA%\Nodicarta\Edge`. When upgrading, quit the old desktop app and close Edge processes using its data folder. The new version moves the entire previous default folder, `%LOCALAPPDATA%\ProjectHub\Edge`, including archived Core profiles. If both locations already hold data, the migration stops and preserves both. A custom data folder keeps its original location.
 
@@ -26,9 +26,11 @@ To change the Core address, select the double-arrow button beside the Core statu
 
 ## Connect or disconnect an AI client
 
-Open **AI clients** from the overview or tray. Connect an installed client from **Popular clients**, or choose **Connect all installed**. In **Other clients · STDIO**, choose **Copy setup instructions** to paste the complete MCP configuration into your agent's chat, or **Copy STDIO configuration** to configure the client manually. Open a chat from a linked folder and reload the client's MCP connection. The **Shared Skills** tab manages the shared Skills and their updates.
+Open **AI clients** from the overview or tray. Connect an installed client from **Popular clients**, or choose **Connect all installed**. In **Other clients · MCP**, choose **Copy setup instructions** to paste the complete MCP configuration into your agent's chat, or **Copy MCP configuration** to configure the client manually. Open a chat from a linked folder and reload the client's MCP connection. The **Shared Skills** tab manages the shared Skills and their updates.
 
-Open Claude Desktop once before connecting it in Edge. After connecting, completely quit and reopen Claude. If Claude Code is also installed, each has its own connection. A Claude Desktop session can access project tools when it supplies a single linked local folder. For Pi Desktop, install the Pi engine (0.99 or later), connect in Edge, then select the Pi engine and open a linked folder in Pi Desktop.
+Edge writes the MCP configuration for the installed desktop and command-line clients it detects. Each shared file is written once. If a later installation needs an additional configuration, the same row offers Connect again.
+
+Open Claude Desktop once before connecting it in Edge. After connecting, completely quit and reopen Claude. Edge configures Claude Desktop and Claude Code separately when both are installed. A Claude Desktop session can access project tools when it supplies a single linked local folder. For Pi Desktop, install the Pi engine (0.99 or later), connect in Edge, then select the Pi engine and open a linked folder in Pi Desktop.
 
 To upgrade, run the new installer against the same installation folder. The built-in clients share its fixed `ProjectHub.Edge.exe` entry point. Edge migrates managed settings that reference an older release in that folder. Clients stay connected across subsequent upgrades, and new MCP sessions use the active release. A portable copy launched directly from an extracted ZIP uses the executable in that copy.
 

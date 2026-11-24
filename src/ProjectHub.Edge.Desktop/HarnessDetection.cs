@@ -10,7 +10,8 @@ internal static class HarnessDetection
 
     internal static string? FindOnPath(string name)
     {
-        foreach (var entry in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        var directories = EnvironmentValues("PATH").SelectMany(value => value.Split(Path.PathSeparator));
+        foreach (var entry in directories.Distinct(StringComparer.OrdinalIgnoreCase))
         {
             var dir = entry.Trim().Trim('"');
             if (!Path.IsPathFullyQualified(dir)) continue;

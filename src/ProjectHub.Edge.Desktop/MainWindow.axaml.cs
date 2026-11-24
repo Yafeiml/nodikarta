@@ -67,6 +67,7 @@ internal partial class MainWindow : Window
             if (accessWindow is null && !busy && !ProjectList.IsDropDownOpen && DateTimeOffset.UtcNow >= nextCoreCheck)
                 _ = RunAsync(LoadAsync);
         };
+        if (OperatingSystem.IsWindows()) Activated += (_, _) => _ = RefreshAccessAfterMaintenanceAsync(skillsChanged: false);
         UiLanguage.Changed += RefreshLanguage;
         Closed += (_, _) =>
         {

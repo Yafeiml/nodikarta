@@ -44,12 +44,12 @@ internal sealed class EdgeAccessSetup(EdgeDesktopClient client)
 
     internal string GlobalSetupInstructions() => UiLanguage.Text(
         $"""
-        请在当前使用的本机客户端中，把下面的 {ServerName} 注册为全局 STDIO MCP。使用客户端支持的添加命令或配置格式，原样保留 command 和 args。先检查现有接入。如果已有条目使用同一命令和参数，就沿用该条目。若同名条目使用不同配置，请先告诉我。保留其他配置，接入时使用全局设置。
+        请在当前客户端的全局 MCP 设置中添加下面的 {ServerName}。将它配置为通过标准输入和输出通信的本地进程。使用客户端支持的添加命令或配置格式，原样保留 command 和 args。先检查现有接入。如果已有条目使用同一命令和参数，就沿用该条目。若同名条目使用不同配置，请先告诉我。保留其他配置。
 
         如果无法修改本机配置，请告诉我应该打开哪个设置页面，以及如何填入下面的值。配置后请尝试重新加载 MCP 并检查工具列表。如果需要我重启客户端，或者需要在 Edge 中绑定当前目录，请告诉我。
         """,
         $"""
-        Register {ServerName} below as a global STDIO MCP server in your current local client. Use the client's supported MCP command or configuration format and preserve command and args exactly. Check existing entries first. Reuse any entry with the same command and arguments. If the same name already has different settings, ask me first. Keep other settings and use global scope.
+        Register {ServerName} below in your client's global MCP settings as a local process using standard input and output. Use the client's supported MCP command or configuration format and preserve command and args exactly. Check existing entries first. Reuse any entry with the same command and arguments. If the same name already has different settings, ask me first. Keep other settings.
 
         If you cannot change the local configuration, tell me which settings page to open and how to enter the values below. After configuring it, try reloading MCP and listing the tools. Tell me if I need to restart the client or link the current folder in Edge.
         """) + "\n\n```json\n" + GlobalStdioJson() + "\n```";

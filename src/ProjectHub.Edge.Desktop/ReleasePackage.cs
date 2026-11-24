@@ -45,6 +45,8 @@ internal sealed class ReleasePackage
     internal bool MatchesLauncher(string hash) => files.TryGetValue(Launcher, out var expected) &&
         string.Equals(expected, hash, StringComparison.OrdinalIgnoreCase);
 
+    internal bool MatchesCli(string hash) => string.Equals(files[Cli], hash, StringComparison.OrdinalIgnoreCase);
+
     internal static IEnumerable<ReleasePackage> Installed(string root)
     {
         foreach (var directory in Directory.EnumerateDirectories(root))

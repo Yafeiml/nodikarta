@@ -5,12 +5,10 @@ using Avalonia.Media;
 
 namespace ProjectHub.Edge.Desktop;
 
-internal sealed record HarnessListItem(HarnessRow Client, IImage Icon, bool HasClaudeDesktop) : LocalizedRow
+internal sealed record HarnessListItem(HarnessRow Client, IImage Icon) : LocalizedRow
 {
     public string DisplayName => Client.Id switch
     {
-        "claude" when !HasClaudeDesktop => "Claude",
-        "claude-desktop" => UiLanguage.Text("Claude 桌面版", "Claude Desktop"),
         "antigravity" => "Antigravity",
         "deepseek" => "DeepSeek",
         _ => Client.Name
@@ -34,6 +32,9 @@ internal sealed record HarnessListItem(HarnessRow Client, IImage Icon, bool HasC
                 state = "已接入";
                 if (!Client.Installed && detail is "" or "已找到接入配置") detail = "未检测到安装";
             }
+            else if (Client.PartiallyConnected)
+                return detail.Length == 0 ? UiLanguage.Text("部分已接入", "Partially connected")
+                    : $"{UiLanguage.Text("部分已接入", "Partially connected")} · {UiLanguage.Message(detail)}";
             else if (Client.ActionText == "待核对") state = "待核对";
             else if (Client.Installed) state = "已安装";
             else if (detail.Length > 0) return UiLanguage.Message(detail);
@@ -76,9 +77,7 @@ internal partial class AccessWindow
         if (ct.IsCancellationRequested || version != harnessRefreshVersion) return;
         if (!HarnessRows.Items.Cast<HarnessListItem>().Select(item => item.Client).SequenceEqual(rows))
         {
-            var hasClaudeDesktop = rows.Any(row => row.Id == "claude-desktop");
-            HarnessRows.ItemsSource = rows.Select(row => new HarnessListItem(row,
-                (IImage)Resources[row.Id == "claude-desktop" ? "claude" : row.Id]!, hasClaudeDesktop)).ToArray();
+            HarnessRows.ItemsSource = rows.Select(row => new HarnessListItem(row, (IImage)Resources[row.Id]!)).ToArray();
         }
         hasInstallableClients = rows.Any(row => row.CanBatchInstall);
         if (silent) InstallDetectedButton.IsEnabled = hasInstallableClients;

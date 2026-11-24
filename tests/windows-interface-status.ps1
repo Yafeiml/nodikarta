@@ -92,7 +92,7 @@ function Check-OverviewActions([string]$capture, [double]$scale) {
         }
         Check-CoreHeader $scale
         $stdioStatus = ById $main 'McpStdioStatus'
-        AssertContained $main $stdioStatus 'MCP · STDIO 状态'
+        AssertContained $main $stdioStatus 'MCP 状态'
         if ($stdioStatus.Current.BoundingRectangle.Right -gt (ById $main 'GlobalAccessButton').Current.BoundingRectangle.Left) {
             throw "$capture 的 STDIO 状态覆盖智能体接入按钮。"
         }

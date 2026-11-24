@@ -449,7 +449,7 @@ internal partial class AccessWindow : UserControl
     private async void CopyConfig(object? sender, RoutedEventArgs e) => await RunAsync(async _ =>
     {
         await WriteClipboardAsync(setup.GlobalStdioJson());
-        return "已复制全局 STDIO 配置。";
+        return "已复制全局 MCP 配置。";
     }, "正在复制配置…");
 
     private async void CopySetup(object? sender, RoutedEventArgs e) => await RunAsync(async _ =>

@@ -43,11 +43,11 @@ Click $view 'CloseAccessButton'
 Click $main 'GlobalAccessButton'
 $view = Wait-Ui 'AI clients' { AccessWindow }
 ExpectName $view 'ConfigFormatClients' 'Popular clients'
-ExpectName $view 'ConfigFormatStdio' 'Other clients · STDIO'
+ExpectName $view 'ConfigFormatStdio' 'Other clients · MCP'
 ExpectName $view 'ConfigFormatSkills' 'Shared Skills'
 $null = Wait-Ui 'English client status and action' {
     (ById $view 'HarnessStatus_claude').Current.Name -like 'Installed*' -and
-    (ById $view 'HarnessInstall_claude').Current.Name -ceq 'Connect Claude Code'
+    (ById $view 'HarnessInstall_claude').Current.Name -ceq 'Connect Claude'
 }
 Snapshot 'clients-en'
 if ($ScreenshotDirectory) {
@@ -61,7 +61,7 @@ if ($ScreenshotDirectory) {
     Snapshot 'clients-en-narrow'
 }
 Click $view 'ConfigFormatStdio'
-ExpectName $view 'CopyConfigButton' 'Copy STDIO configuration'
+ExpectName $view 'CopyConfigButton' 'Copy MCP configuration'
 Click $view 'ConfigFormatSkills'
 Click $view 'CheckSkillsButton'
 ExpectName $view 'AccessResult' 'Compared installed Skills with those bundled with Edge.'

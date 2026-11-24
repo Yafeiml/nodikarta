@@ -62,6 +62,9 @@ internal static class EdgeButtonLayout
     {
         var list = device.FindControl<ItemsControl>("HarnessRows")!;
         var previousRows = list.ItemsSource;
+        if (!list.Items.Cast<HarnessListItem>().Select(row => row.Client.Id)
+                .SequenceEqual(["codex", "claude", "antigravity", "cursor", "opencode", "deepseek", "pi"]))
+            throw new Exception("常用客户端应显示七个品牌，每个品牌占一行。");
         var copyButton = list.GetVisualDescendants().OfType<Button>().Single(b => AutomationProperties.GetAutomationId(b) == "HarnessCopy_codex");
         if (!copyButton.Focus(NavigationMethod.Tab)) throw new Exception("复制按钮没有获得焦点。");
         var refresh = device.RefreshAfterMaintenanceAsync();
@@ -128,7 +131,7 @@ internal static class EdgeButtonLayout
         var tabs = group.Children.Cast<Button>().ToArray();
         if (!tabs.Select(tab => AutomationProperties.GetAutomationId(tab)).SequenceEqual(
                 ["ConfigFormatClients", "ConfigFormatStdio", "ConfigFormatSkills"]) ||
-            !tabs.Select(tab => tab.Content as string).SequenceEqual(["常用客户端", "其他客户端 · STDIO", "通用 Skills"]))
+            !tabs.Select(tab => tab.Content as string).SequenceEqual(["常用客户端", "其他客户端 · MCP", "通用 Skills"]))
             throw new Exception("智能体接入的三个页签名称或排列顺序不符。");
         Border[] panels = [device.FindControl<Border>("HarnessPanel")!, device.FindControl<Border>("StdioPanel")!,
             device.FindControl<Border>("SkillsHost")!];

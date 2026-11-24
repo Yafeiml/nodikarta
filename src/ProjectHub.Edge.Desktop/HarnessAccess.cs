@@ -10,6 +10,7 @@ internal sealed record HarnessRow(string Id, string Name, bool Installed, string
     public bool IsConnected => ActionText == "已接入";
     public bool CanBatchInstall => Installed && ActionText == "接入" && CanInstall;
     public bool CanDisconnect { get; init; }
+    public bool PartiallyConnected { get; init; }
 
     // The caller has already verified the managed entry's complete shape and state directory.
     internal static void CheckManagedCommand(string previous, string current, HarnessEdit edit)
@@ -28,6 +29,7 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
     private string State => client.StateDirectory;
     private IReadOnlyList<StandardHarness> StandardTargets() => StandardHarnesses.Detect(detectClaudeDesktopPackage);
     private IEnumerable<StandardHarness> Targets() => StandardTargets().Append(SpecialHarnesses.Pi());
+    private static bool IsClaude(StandardHarness target) => target.Id is "claude" or "claude-desktop";
 
     internal IReadOnlyList<HarnessRow> Inspect()
     {
@@ -44,13 +46,8 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
         }
         var rows = new List<HarnessRow> { codexRow };
         var standard = StandardTargets();
-        var hasClaudeDesktop = standard.Any(target => target.Id == "claude-desktop");
-        foreach (var target in standard)
-        {
-            var row = InspectJson(target);
-            if (hasClaudeDesktop && target.Id == "claude" && !row.Installed && row.ActionText == "接入") continue;
-            rows.Add(row);
-        }
+        rows.Add(InspectClaude(standard));
+        foreach (var target in standard.Where(target => !IsClaude(target))) rows.Add(InspectJson(target));
         try { rows.Add(SpecialHarnesses.InspectDeepSeek(Command, State)); }
         catch (Exception e) when (IsConfigError(e))
         {
@@ -58,6 +55,21 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
         }
         rows.Add(InspectJson(SpecialHarnesses.Pi()));
         return rows;
+    }
+
+    private HarnessRow InspectClaude(IEnumerable<StandardHarness> targets)
+    {
+        var variants = targets.Where(IsClaude).Select(InspectJson).ToArray();
+        var canInstall = variants.Any(row => row.CanBatchInstall);
+        var active = variants.Where(row => row.IsConnected).ToArray();
+        var problem = variants.FirstOrDefault(row => row.Installed && row.ActionText == "待核对");
+        var action = canInstall ? "接入" : problem != null ? "待核对" : active.Length > 0 ? "已接入" : "接入";
+        var detail = problem?.Detail ?? (action == "已接入" ? active.First().Detail : "");
+        return new("claude", "Claude", variants.Any(row => row.Installed), action, detail, canInstall)
+        {
+            CanDisconnect = !canInstall && active.Length > 0,
+            PartiallyConnected = action != "已接入" && active.Length > 0
+        };
     }
 
     private HarnessRow InspectJson(StandardHarness target)
@@ -105,8 +117,21 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
     {
         "codex" => codex.ConfigToml(),
         "deepseek" => SpecialHarnesses.CopyDeepSeek(Command, State),
+        "claude" => CopyClaude(),
         _ => HarnessJson.Copy(Targets().Single(t => t.Id == id), Command, State)
     };
+
+    private string CopyClaude()
+    {
+        var variants = StandardTargets().Where(IsClaude).ToArray();
+        var installed = variants.Where(target => target.Detected).ToArray();
+        if (installed.Length == 2)
+            return string.Join("\n\n", installed.Select(target =>
+                (target.Id == "claude-desktop" ? "Claude Chat" : "Claude Code") + " · MCP\n" +
+                HarnessJson.Copy(target, Command, State)));
+        var only = installed.SingleOrDefault() ?? variants.Single(target => target.Id == "claude");
+        return HarnessJson.Copy(only, Command, State);
+    }
 
     private static bool SameCommand(string? command) => command != null &&
         EdgeInstallCommand.Classify(command, Command) != EdgeCommandKind.Unknown;
@@ -201,12 +226,32 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
             GlobalCodexAccess.WithLock("ProjectHub.DeepSeekHarness", () => SpecialHarnesses.DisconnectDeepSeek(Command, State));
             return;
         }
-        var target = Targets().Single(t => t.Id == id);
+        if (id == "claude")
+        {
+            var variants = StandardTargets().Where(IsClaude).Select(target => (Target: target, Row: InspectJson(target))).ToArray();
+            var connected = variants.Where(variant => variant.Row.CanDisconnect).ToArray();
+            if (connected.Length == 0 && variants.FirstOrDefault(variant => variant.Row.ActionText == "待核对").Row is { } problem)
+                throw new InvalidDataException(UiLanguage.Message(problem.Detail));
+            var problems = new List<string>();
+            foreach (var (target, _) in connected)
+            {
+                ct.ThrowIfCancellationRequested();
+                try { DisconnectJson(target); }
+                catch (Exception e) when (IsConfigError(e)) { problems.Add(DetailFor(e)); }
+            }
+            if (problems.Count > 0) throw new InvalidDataException(string.Join("\n", problems));
+            return;
+        }
+        DisconnectJson(Targets().Single(t => t.Id == id));
+    }, ct);
+
+    private void DisconnectJson(StandardHarness target)
+    {
         if (target.BlockedReason is { } reason) throw new InvalidDataException(reason);
         GlobalCodexAccess.WithLock(target.ConfigPath, () =>
         {
             string Remove(string text) => HarnessJson.Inspect(target, text, Command, State, out _, HarnessEdit.Remove);
-            if (id != "antigravity") return CodexAccessFile.Edit(target.ConfigPath, Remove);
+            if (target.Id != "antigravity") return CodexAccessFile.Edit(target.ConfigPath, Remove);
             var session = client.Session;
             // Establish ownership before retiring any directory, then persist the intent before touching the global file.
             CodexAccessFile.CheckPath(target.ConfigPath);
@@ -223,7 +268,7 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
             finally { session.RetryAntigravityCleanup(); }
             return true;
         });
-    }, ct);
+    }
 
     internal Task<string> InstallAsync(string id, CancellationToken ct, bool installedOnly = false) => Task.Run(async () =>
     {
@@ -239,7 +284,26 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
             if (!SpecialHarnesses.DeepSeekInstalled()) throw new InvalidOperationException("未检测到 DeepSeek Harness。");
             return GlobalCodexAccess.WithLock("ProjectHub.DeepSeekHarness", () => SpecialHarnesses.InstallDeepSeek(Command, State));
         }
-        var target = Targets().Single(t => t.Id == id);
+        if (id == "claude")
+        {
+            var installed = StandardTargets().Where(target => IsClaude(target) && target.Detected).ToArray();
+            if (installed.Length == 0) throw new InvalidOperationException(UiLanguage.Format("未检测到 {0}。", "Claude"));
+            var problems = new List<string>();
+            foreach (var target in installed)
+            {
+                ct.ThrowIfCancellationRequested();
+                try { InstallJson(target); }
+                catch (Exception e) when (IsConfigError(e)) { problems.Add(DetailFor(e)); }
+            }
+            if (problems.Count > 0) throw new InvalidOperationException(string.Join("\n", problems));
+            return UiLanguage.Format("{0} 配置已就绪。{1}", "Claude",
+                UiLanguage.Message(installed.First().Hint));
+        }
+        return InstallJson(Targets().Single(t => t.Id == id));
+    }, ct);
+
+    private string InstallJson(StandardHarness target)
+    {
         if (!target.Detected) throw new InvalidOperationException(UiLanguage.Format("未检测到 {0}。", target.Name));
         if (target.BlockedReason is { } reason) throw new InvalidOperationException(reason);
         GlobalCodexAccess.WithLock(target.ConfigPath, () =>
@@ -250,7 +314,7 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
         });
         return target.ConnectedMessage is { } message ? UiLanguage.Message(message)
             : UiLanguage.Format("{0} 配置已就绪。{1}", target.Name, UiLanguage.Message(target.Hint));
-    }, ct);
+    }
 
     internal Task<string> InstallAllAsync(CancellationToken ct) => Task.Run(async () =>
     {

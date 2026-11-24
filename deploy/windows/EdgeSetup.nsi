@@ -29,10 +29,13 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "Nodicarta contributors"
 ShowInstDetails show
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "$(UninstallMcpNotice)"
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+LangString UninstallMcpNotice ${LANG_ENGLISH} "Uninstalling stops this installation's running Edge CLI and MCP sessions. Any requests they are processing will be interrupted. Your Edge device data is kept."
+LangString UninstallMcpNotice ${LANG_SIMPCHINESE} "卸载会关闭本安装的 Edge 命令行及 MCP 会话，中断正在处理的请求。Edge 设备数据会保留。"
 Var setupMode
 
 Function .onInit

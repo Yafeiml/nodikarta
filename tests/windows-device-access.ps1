@@ -1,10 +1,15 @@
 # Device-level checks run against the temporary profile created by windows-access-gui.ps1.
 function Get-HarnessFixtureIds($view) {
-    # The fixture puts a Claude Code launcher on its private PATH in every mode.
-    $null = Wait-Ui '隔离用户的 Claude Code 列表行' { ById $view 'HarnessInstall_claude' }
-    'codex'
-    if (ById $view 'HarnessInstall_claude-desktop') { 'claude-desktop' }
-    'claude','antigravity','cursor','opencode','deepseek','pi'
+    $null = Wait-Ui '常用客户端列表加载完成' { ById $view 'HarnessInstall_pi' }
+    $buttons = [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [Windows.Automation.ControlType]::Button)
+    $rows = (ById $view 'HarnessRows').FindAll([Windows.Automation.TreeScope]::Descendants,$buttons)
+    $ids = @($rows | ForEach-Object { $_.Current.AutomationId } | Where-Object { $_ -like 'HarnessInstall_*' } |
+        ForEach-Object { $_.Substring('HarnessInstall_'.Length) })
+    if (($ids -join ',') -cne 'codex,claude,antigravity,cursor,opencode,deepseek,pi') {
+        throw "常用客户端应为七个品牌且 Claude 只有一行，实际为 $($ids -join '、')。"
+    }
+    $ids
 }
 
 function Set-HarnessFixtureScroll($view,[double]$percent) {
@@ -234,7 +239,6 @@ function Check-HarnessCopies($access) {
             $entry = $doc.mcpServers.nodicarta
             if ($entry.command -ne $cli -or $entry.args -notcontains $state) { return $false }
             switch ($id) {
-                'claude-desktop' { return $entry.args -contains '--workspace-roots' -and $entry.args -notcontains 'CLAUDE_PROJECT_DIR' }
                 'claude' { return $entry.args -contains 'CLAUDE_PROJECT_DIR' }
                 'antigravity' { return $entry.args -contains '--workspace-roots' }
                 'cursor' { return $entry.env.PROJECTHUB_WORKSPACE -ceq '${workspaceFolder}' }

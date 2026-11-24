@@ -159,7 +159,7 @@
                   </Grid>
                   <Border Height="1" Background="#E4EAF0"/>
                   <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                    <TextBlock Classes="hint" Text="MCP · STDIO" VerticalAlignment="Center"/>
+                    <TextBlock Classes="hint" Text="MCP" VerticalAlignment="Center"/>
                     <TextBlock Grid.Column="1" x:Name="McpStdioStatus" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center" AutomationProperties.AutomationId="McpStdioStatus" ToolTip.Tip="{desktop:Tr '由 AI 客户端按需启动，通过标准输入输出通信。统计此设备状态目录下新版 Edge 启动的进程。'}"/>
                     <Button x:Name="GlobalAccessButton" Grid.Column="2" Classes="pill action overviewAction" Content="{desktop:Tr '智能体接入'}" Click="ShowGlobalSettings" AutomationProperties.AutomationId="GlobalAccessButton"/>
                   </Grid>

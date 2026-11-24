@@ -4,6 +4,7 @@ using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Win32;
+using Microsoft.Win32.SafeHandles;
 
 namespace ProjectHub.Edge.Desktop;
 
@@ -332,22 +333,21 @@ internal static class ReleaseInstallation
         if (packages.All(package => package.Id != actual.Id)) throw new IOException("Could not verify the currently installed release.");
         string launcher = Path.Combine(root, ReleasePackage.Cli);
         if (!KnownLauncher(root, ReleasePackage.Hash(launcher))) throw new IOException("Unrecognized MCP launcher.");
-        foreach (var cli in Process.GetProcessesByName("ProjectHub.Edge"))
-            using (cli)
-            {
-                try
-                {
-                    var path = cli.MainModule?.FileName;
-                    if (path != null && (ReleaseLinks.Same(path, launcher) || packages.Any(p => ReleaseLinks.Same(path, Path.Combine(p.DirectoryPath, "bin", ReleasePackage.Cli)))))
-                        throw new IOException("Close the MCP sessions using this installation before uninstalling.");
-                }
-                catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { }
-            }
-        StopExisting(actual.Executable);
-        if (ReleaseLinks.Same(links.ExistingDesktop, actual.Executable))
-            foreach (var link in links.Paths) if (File.Exists(link)) File.Delete(link);
-        foreach (var package in packages) package.RemoveInstalledFiles();
-        foreach (var name in new[] { ReleasePackage.Cli, "active-release", Receipt, "Uninstall.exe" }) File.Delete(Path.Combine(root, name));
+        var cliPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { launcher };
+        foreach (var package in packages)
+        {
+            var cli = Path.Combine(package.DirectoryPath, "bin", ReleasePackage.Cli);
+            if (File.Exists(cli) && package.MatchesCli(ReleasePackage.Hash(cli))) cliPaths.Add(cli);
+        }
+        using (BlockLauncher(Path.Combine(root, "active-release")))
+        {
+            StopExisting(actual.Executable);
+            StopInstalledCli(cliPaths);
+            if (ReleaseLinks.Same(links.ExistingDesktop, actual.Executable))
+                foreach (var link in links.Paths) if (File.Exists(link)) File.Delete(link);
+            foreach (var package in packages) package.RemoveInstalledFiles();
+            foreach (var name in new[] { ReleasePackage.Cli, "active-release", Receipt, "Uninstall.exe" }) File.Delete(Path.Combine(root, name));
+        }
         var cache = Path.Combine(root, "updates");
         CodexAccessFile.CheckPath(cache);
         if (Directory.Exists(cache))
@@ -374,6 +374,85 @@ internal static class ReleaseInstallation
         }
         if (!Directory.EnumerateFileSystemEntries(root).Any()) Directory.Delete(root);
     }
+
+    private static FileStream BlockLauncher(string pointer)
+    {
+        // Both launcher generations read this pointer at start. The handle denies new reads
+        // while allowing removal and releases the guard automatically if uninstall fails.
+        var watch = Stopwatch.StartNew();
+        while (true)
+        {
+            try { return File.Open(pointer, FileMode.Open, FileAccess.Read, FileShare.Delete); }
+            catch (IOException ex) when (ex.HResult == unchecked((int)0x80070020) && watch.ElapsedMilliseconds < 3000)
+            { Thread.Sleep(40); }
+        }
+    }
+
+    private static void StopInstalledCli(HashSet<string> paths)
+    {
+        const uint query = 0x1000, terminate = 0x0001, synchronize = 0x00100000;
+        using var user = WindowsIdentity.GetCurrent();
+        var image = new StringBuilder(32768);
+        var watch = Stopwatch.StartNew();
+        while (true)
+        {
+            bool stoppedAny = false;
+            foreach (var cli in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(ReleasePackage.Cli)))
+            {
+                using (cli)
+                using (var process = OpenProcess(query | terminate | synchronize, false, cli.Id))
+                {
+                    if (process.IsInvalid)
+                    {
+                        using var inspect = OpenProcess(query, false, cli.Id);
+                        if (IsInstalledCli(inspect)) throw CannotStop(cli.Id);
+                        continue;
+                    }
+                    if (!IsInstalledCli(process)) continue;
+                    // The verified process handle also performs termination, even if its PID is recycled.
+                    if (!TerminateProcess(process, 1) && WaitForSingleObject(process, 0) != 0) throw CannotStop(cli.Id);
+                    if (WaitForSingleObject(process, (uint)Math.Max(0, 5000 - watch.ElapsedMilliseconds)) != 0)
+                        throw CannotStop(cli.Id);
+                    stoppedAny = true;
+                }
+            }
+            if (!stoppedAny) return;
+            if (watch.ElapsedMilliseconds >= 5000) throw new IOException("Edge MCP sessions kept restarting during uninstall. Pause the client's MCP reconnect and try again.");
+        }
+
+        bool IsInstalledCli(SafeProcessHandle process)
+        {
+            int length = image.Capacity;
+            if (process.IsInvalid || !QueryFullProcessImageNameW(process, 0, image, ref length) || !paths.Contains(image.ToString())) return false;
+            if (!OpenProcessToken(process, (uint)TokenAccessLevels.Query, out var token))
+            {
+                int error = Marshal.GetLastPInvokeError();
+                token.Dispose();
+                if (error == 5) throw new IOException("Could not verify the owner of an Edge MCP process during uninstall.");
+                return false;
+            }
+            using (token)
+            using (var owner = new WindowsIdentity(token.DangerousGetHandle()))
+                return Equals(owner.User, user.User);
+        }
+
+        static IOException CannotStop(int pid) => new($"Could not stop Edge MCP process {pid}. Close that session and try uninstalling again.");
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern SafeProcessHandle OpenProcess(uint access, bool inherit, int pid);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    private static extern bool QueryFullProcessImageNameW(SafeProcessHandle process, uint flags, StringBuilder name, ref int length);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(SafeProcessHandle process, uint access, out SafeAccessTokenHandle token);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(SafeProcessHandle handle, uint milliseconds);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern int MessageBoxW(nint owner, string text, string caption, uint type);

@@ -349,12 +349,16 @@ foreach ($mode in 'none','readOnly','readWrite') {
             }
             Click $access 'InstallDetectedHarnesses'
             $null = Wait-Ui '批量接入后读回 Claude 和 OpenCode 配置' {
-                (ById $access 'HarnessInstall_claude').Current.Name -eq '断开 Claude Code 接入' -and
+                (ById $access 'HarnessInstall_claude').Current.Name -eq '断开 Claude 接入' -and
                 (ById $access 'HarnessInstall_opencode').Current.Name -eq '断开 OpenCode 接入' -and
                 (ById $access 'AccessResult').Current.Name -like '*Cursor*'
             }
-            $claude = Get-Content -Raw -LiteralPath (Join-Path $testUserHome '.claude.json') | ConvertFrom-Json
-            if ($claude.mcpServers.nodicarta.command -ne $cli) { throw 'Claude Code 注册项未指向本次验收包。' }
+            $claudeConfig = Join-Path $testUserHome '.claude.json'
+            $claude = Get-Content -Raw -LiteralPath $claudeConfig | ConvertFrom-Json
+            if ($claude.mcpServers.nodicarta.command -ne $cli -or
+                ($claude.mcpServers.nodicarta.args -join '|') -cne "mcp-stdio-global|--state|$state|--workspace-env|CLAUDE_PROJECT_DIR") {
+                throw 'Claude Code 注册项未使用本次验收包和 CLI 工作目录参数。'
+            }
             if ((Get-Content -Raw $opencodeConfig | ConvertFrom-Json).mcp.projecthub.command[0] -ne $cli) {
                 throw 'OpenCode 旧版接入路径未更新。'
             }
@@ -365,6 +369,40 @@ foreach ($mode in 'none','readOnly','readWrite') {
                 (Test-Path (Join-Path $testUserHome '.pi/agent/mcp.json'))) { throw '未装 Pi 也写入了配置。' }
             Snapshot 'harnesses'
             Pass '各客户端均有独立状态和复制入口，单项接入及批量接入均通过。'
+            if (!$SkillsTab) {
+                $codeHash = (Get-FileHash -LiteralPath $claudeConfig).Hash
+                $chatProfile = [IO.Directory]::CreateDirectory((Join-Path $start.Environment['APPDATA'] 'Claude')).FullName
+                $chatConfig = Join-Path $chatProfile 'claude_desktop_config.json'
+                if (Test-Path -LiteralPath $chatConfig) { throw '迟安装回归需要尚未接入 Claude 桌面版的隔离配置。' }
+                $chatBefore = '{"mcpServers":{"fixture-existing":{"command":"unrelated-server"}}}'
+                [IO.File]::WriteAllText($chatConfig,$chatBefore)
+                $classic = [IO.Directory]::CreateDirectory((Join-Path $start.Environment['LOCALAPPDATA'] 'Programs/Claude')).FullName
+                [IO.File]::WriteAllBytes((Join-Path $classic 'Claude.exe'),[byte[]]@())
+                Click $access 'ConfigFormatStdio'
+                Click $access 'ConfigFormatClients'
+                $null = Wait-Ui '检测到 Claude 桌面版后，同一行可继续接入' {
+                    $action = ById $access 'HarnessInstall_claude'
+                    $action.Current.IsEnabled -and $action.Current.Name -ceq '接入 Claude' -and
+                        (ById $access 'HarnessStatus_claude').Current.Name -like '部分已接入*'
+                }
+                $null = Get-HarnessFixtureIds $access
+                if ([IO.File]::ReadAllText($chatConfig) -cne $chatBefore -or (Get-FileHash -LiteralPath $claudeConfig).Hash -ne $codeHash) {
+                    throw '重新检测客户端时意外写入了 Claude 配置。'
+                }
+                Click $access 'HarnessInstall_claude'
+                $null = Wait-Ui 'Claude 两个客户端均已接入' {
+                    (ById $access 'HarnessInstall_claude').Current.Name -ceq '断开 Claude 接入' -and
+                        (ById $access 'HarnessStatus_claude').Current.Name -like '已接入*'
+                }
+                $chatEntries = (Get-Content -Raw -LiteralPath $chatConfig | ConvertFrom-Json).mcpServers
+                if ($chatEntries.nodicarta.command -ne $cli -or
+                    ($chatEntries.nodicarta.args -join '|') -cne "mcp-stdio-global|--state|$state|--workspace-roots" -or
+                    $chatEntries.'fixture-existing'.command -cne 'unrelated-server' -or
+                    (Get-FileHash -LiteralPath $claudeConfig).Hash -ne $codeHash) {
+                    throw 'Claude 接入应补接桌面版并保留 CLI 原配置及已有服务。'
+                }
+                Pass 'Claude CLI 已接入后新增桌面版，仍只有一个 Claude 品牌行，点击一次补接桌面版，CLI 配置逐字节保留。'
+            }
             Check-DevicePage $access 'Clients'
             Check-DeviceSkills $access $skillRoot
             if ($SkillsTab -and $ScreenshotDirectory) { . (Join-Path $PSScriptRoot 'windows-skills-tab-input.ps1') }

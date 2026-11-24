@@ -74,13 +74,6 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
         $silhouettes = @{}
         for ($i=0; $i -lt $ids.Count; $i++) {
             $id = $ids[$i]
-            if ($i -eq 4 -and $ids.Count -gt 7) {
-                Set-HarnessFixtureScroll $view 100
-                $stem = [IO.Path]::GetFileNameWithoutExtension($imagePath) + '-bottom'
-                Save-WindowsTestWindow (MainWindow) $ScreenshotDirectory $stem
-                $bmp.Dispose()
-                $bmp = [Drawing.Bitmap]::FromFile((Join-Path $ScreenshotDirectory "$stem.png"))
-            }
             $icon = (ById $view "HarnessIcon_$id").Current.BoundingRectangle
             $copy = (ById $view "HarnessCopy_$id").Current.BoundingRectangle
             $x = $icon.Left + $icon.Width/2 - $frame.Left
@@ -95,11 +88,10 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
                 }
             }
             $signature = $ink -join ','
-            $brand = if ($id -eq 'claude-desktop') { 'claude' } else { $id }
-            if (@($ink).Count -lt 12*$scale*$scale -or ($silhouettes.ContainsKey($signature) -and $silhouettes[$signature] -ne $brand)) {
+            if (@($ink).Count -lt 12*$scale*$scale -or $silhouettes.ContainsKey($signature)) {
                 throw "$id 图标没有绘制，或错误地复用了另一个品牌的图形。"
             }
-            $silhouettes[$signature] = $brand
+            $silhouettes[$signature] = $id
             # Sample both sides of the logo, then the empty rounded corner and the adjacent card.
             foreach ($offset in -15,15) {
                 if ($bmp.GetPixel([int]($x+$offset*$scale),[int]$y).Name -ne 'fffafafa') { throw "$id 图标浅灰底板未正确显示。" }
@@ -150,10 +142,6 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
 function Check-RowLayout($view, [string]$language) {
     $expected = @{codex='Codex';claude='Claude';antigravity='Antigravity';cursor='Cursor';opencode='OpenCode';deepseek='DeepSeek';pi='Pi'}
     $ids = @(Get-HarnessFixtureIds $view)
-    if ($ids -contains 'claude-desktop') {
-        $expected['claude-desktop'] = if ($language -eq 'en') { 'Claude Desktop' } else { 'Claude 桌面版' }
-        $expected['claude'] = 'Claude Code'
-    }
     $list = ById $view 'HarnessRows'
     Set-HarnessFixtureScroll $view 0
     for ($i=0; $i -lt $ids.Count; $i++) {
@@ -336,7 +324,7 @@ try {
     $app = [Diagnostics.Process]::Start($start)
     $access = Open-FixtureAccess 'en'
     Assert-Disconnected $access 'Connect Codex'
-    if ((ById $access 'HarnessInstall_claude').Current.Name -cne 'Disconnect Claude Code' -or
+    if ((ById $access 'HarnessInstall_claude').Current.Name -cne 'Disconnect Claude' -or
         (ById $access 'HarnessStatus_claude').Current.Name -notlike 'Connected*') { throw 'Invalid English row labels' }
     Check-RowLayout $access 'en'
     if ($ScreenshotDirectory) { Pass '中英文在默认和窄窗口共四次实测，各行均为 52 DIP，24 DIP 图标居于浅灰圆角底板内。1 DIP 中性灰分隔线贯穿列表，主操作和复制列对齐，间距 8 DIP。' }
