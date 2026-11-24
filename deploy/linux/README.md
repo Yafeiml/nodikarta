@@ -2,7 +2,7 @@
 
 ## 启动
 
-Ubuntu 或 Debian 桌面可在下载目录运行以下命令，再从应用菜单打开「脉络 Edge」。从 Linux 预览版升级时，请先关闭旧版窗口。
+Ubuntu 或 Debian 桌面可在下载目录运行以下命令，再从应用菜单打开「脉络 Edge」。下例使用 1.1.0，其他版本请替换为下载的文件名。从 Linux 预览版升级时，请先关闭旧版窗口。
 
 ```sh
 sudo apt install ./nodicarta-edge_1.1.0_amd64.deb
@@ -33,3 +33,15 @@ When upgrading from a Linux preview, close its window first. Install the Debian 
 Create a pairing code in your Core, enter its address in Edge, select an authorized project and add its local folder. **Copy MCP config** gives you a local STDIO configuration to paste into your client. Start the client in the linked folder. Closing Edge exits the desktop app. Install the next Linux release manually.
 
 An explicit absolute `XDG_STATE_HOME` stores data in `$XDG_STATE_HOME/Nodicarta/Edge`. By default, Edge uses `~/.local/state/Nodicarta/Edge`. On first start, if other users can write to its parent directories and the original location is empty, Edge uses `~/.Nodicarta/Edge`. Subsequent launches use the existing data location.
+
+## Building the Linux release
+
+From the repository root on an x86_64 Linux runner with Docker Buildx, use the release commit as the build context. Set `VERSION` to the requested release version first.
+
+```sh
+docker buildx build --platform linux/amd64 -f deploy/linux/Dockerfile.aot \
+  --build-arg EDGE_VERSION="$VERSION" --output type=local,dest=out/linux .
+(cd out/linux && sha256sum -c SHA256SUMS)
+```
+
+Both Edge project files must declare the same version. Omitting `EDGE_VERSION` uses that version. Providing it also checks the requested version against the checkout. The build checks both Native AOT executables with `--version` before exporting the DEB and portable archive.

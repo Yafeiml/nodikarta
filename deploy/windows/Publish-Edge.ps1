@@ -10,7 +10,22 @@ param(
     [switch]$TestChannel
 )
 $ErrorActionPreference = 'Stop'
-$out = [IO.Directory]::CreateDirectory([IO.Path]::GetFullPath($OutputDirectory)).FullName
+if ($Desktop -or $NativeAot) {
+    $gcc = $null
+    $compilers = @(Get-Command gcc.exe -CommandType Application -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
+    # GitHub's Windows image also ships a 32-bit toolchain.
+    foreach ($path in ($compilers + "${env:SystemDrive}\mingw64\bin\gcc.exe" | Select-Object -Unique)) {
+        if (![IO.File]::Exists($path)) { continue }
+        $resources = Join-Path (Split-Path $path) 'windres.exe'
+        if ((& $path -dumpmachine) -eq 'x86_64-w64-mingw32' -and (!$NativeAot -or [IO.File]::Exists($resources))) {
+            $gcc = $path
+            $windres = $resources
+            break
+        }
+    }
+    if (!$gcc) { throw 'Install x64 MinGW-w64 GCC and binutils, then put their bin directory on PATH.' }
+}
+$out = [IO.Directory]::CreateDirectory($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)).FullName
 $package = Join-Path ([IO.Path]::GetTempPath()) ('projecthub-package-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $package
 $bin = Join-Path $package 'bin'
@@ -36,7 +51,7 @@ if ($NativeAot) {
             $test = $TestChannel.IsPresent.ToString().ToLowerInvariant()
             $guiOptions += "-p:Description=Nodicarta/public-v1|$($UpdateFeed.AbsoluteUri)|$PublisherPublicKey|$test"
         }
-        dotnet publish (Join-Path $repo "src/$project/$project.csproj") -c Release -r win-x64 --self-contained true -o $bin @properties @guiOptions
+        dotnet publish (Join-Path $repo "src/$project/$project.csproj") -c Release -r win-x64 --self-contained true -o $bin --artifacts-path (Join-Path $work 'gui-obj') @properties @guiOptions
         if ($LASTEXITCODE) { throw 'Native AOT desktop publish failed.' }
     }
     $native = Join-Path $work 'cli'
@@ -55,15 +70,14 @@ if ($NativeAot) {
     foreach ($unused in 'aspnetcorev2_inprocess.dll','ProjectHub.Edge.runtimeconfig.json') {
         [IO.File]::Delete((Join-Path $bin $unused))
     }
-    if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'The native CLI host needs x64 MinGW-w64.' }
     $hostSources = Join-Path $repo 'src/ProjectHub.Edge.Launcher'
     $iconDir = Join-Path $repo 'src/ProjectHub.Edge.Desktop/Assets'
     $resource = Join-Path $work 'cli-resources.o'
-    & windres "-I$iconDir" "-DEDGE_VERSION_NUMBER=$($Version.Major),$($Version.Minor),$($Version.Build),0" ('-DEDGE_VERSION_TEXT=\"' + $Version + '\"') (Join-Path $hostSources 'windows-cli.rc') $resource
+    & $windres "-I$iconDir" "-DEDGE_VERSION_NUMBER=$($Version.Major),$($Version.Minor),$($Version.Build),0" ('-DEDGE_VERSION_TEXT=\"' + $Version + '\"') (Join-Path $hostSources 'windows-cli.rc') $resource
     if ($LASTEXITCODE) { throw 'Native CLI version/icon resource compilation failed.' }
-    & gcc -std=c11 -Os -municode -s -DNODICARTA_PORTABLE_CLI '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'windows.c') $resource -o (Join-Path $bin 'ProjectHub.Edge.exe')
+    & $gcc -std=c11 -Os -municode -s -DNODICARTA_PORTABLE_CLI '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'windows.c') $resource -o (Join-Path $bin 'ProjectHub.Edge.exe')
     if ($LASTEXITCODE) { throw 'Native CLI entry compilation failed.' }
-    & gcc -std=c11 -Os -shared -s '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'compat-hostfxr.c') -o (Join-Path $bin 'hostfxr.dll')
+    & $gcc -std=c11 -Os -shared -s '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'compat-hostfxr.c') -o (Join-Path $bin 'hostfxr.dll')
     if ($LASTEXITCODE) { throw 'Native CLI compatibility library compilation failed.' }
 } else {
     dotnet publish (Join-Path $repo "src/$project/$project.csproj") -c Release -r win-x64 --self-contained true -o $bin @properties
@@ -84,8 +98,7 @@ if ($Desktop) {
         $metadata = [ordered]@{releaseLine='public-v1';publisherKeyId=$keyId;channel='stable';rid='win-x64';version=$Version.ToString()}
         [IO.File]::WriteAllText((Join-Path $bin 'nodicarta-release.json'), ($metadata | ConvertTo-Json -Compress))
     }
-    if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32') { throw '桌面启动器需要 Windows x64 MinGW-w64 GCC。' }
-    gcc -std=c11 -Os -municode -s '-Wl,--no-insert-timestamp' (Join-Path $PSScriptRoot '../../src/ProjectHub.Edge.Launcher/windows.c') -o (Join-Path $bin 'Nodicarta.Edge.Launcher.exe')
+    & $gcc -std=c11 -Os -municode -s '-Wl,--no-insert-timestamp' (Join-Path $PSScriptRoot '../../src/ProjectHub.Edge.Launcher/windows.c') -o (Join-Path $bin 'Nodicarta.Edge.Launcher.exe')
     if ($LASTEXITCODE) { throw 'Edge 启动器构建失败。' }
     foreach ($file in 'Install-EdgeDesktop.ps1','Test-EdgeRelease.ps1','Edge-ActiveRelease.ps1','User-Dispatch.ps1','Edge-StatePaths.ps1') {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package

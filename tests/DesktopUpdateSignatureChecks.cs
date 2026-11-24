@@ -67,7 +67,7 @@ try
         Sign(Offer(target).ToJsonString());
         if (await service.CheckAsync(ct) != null) throw new Exception("Suggested same/older release " + target);
     }
-    foreach (var (field, value) in new[] { ("product","other"), ("channel","preview"), ("rid","linux-x64"), ("version","01.0.1"),
+    foreach (var (field, value) in new[] { ("product","other"), ("channel","preview"), ("channel","rehearsal"), ("rid","linux-x64"), ("version","01.0.1"),
         ("url","http://127.0.0.1:39181/Nodicarta-Edge-1.0.1-win-x64-setup.exe"), ("sha256", "bad") })
     {
         var message = Offer();

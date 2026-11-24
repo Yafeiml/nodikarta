@@ -9,32 +9,20 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $testing = $PSCmdlet.ParameterSetName -eq 'Test'
-. (Join-Path $PSScriptRoot 'ValidateReleaseTrust.ps1')
-$pem = (Resolve-Path (Join-Path $PSScriptRoot '../../release/edge-update-public.pem')).Path
-$official = Get-EdgePublicSpki $pem
-$key = $official
-$feed = [uri](Get-EdgeStableFeed)
-if ($testing) {
-    if (!$TestFeed.IsLoopback -or $TestFeed.Scheme -ne 'http' -or $TestFeed.UserInfo -or $TestFeed.Query -or $TestFeed.Fragment -or
-        $TestFeed.Segments[-1] -cne 'nodicarta-edge-stable-win-x64.json') { throw 'A loopback test feed is required.' }
-    $feed = $TestFeed
-    $key = Get-EdgePublicSpki (Resolve-Path -LiteralPath $TestPublicKeyFile).Path
-    if ($key -ceq $official) { throw 'The test and public channels require independent P-256 keys.' }
-}
 $channel = if ($testing) { 'test' } else { 'stable' }
-$out = [IO.Directory]::CreateDirectory((Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "$channel/$Version")).FullName
-$archiveDirectory = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "test-archives/$channel/$Version"
-$package = & (Join-Path $PSScriptRoot 'Publish-Edge.ps1') -NativeAot -Desktop -Version $Version -OutputDirectory $archiveDirectory -UpdateFeed $feed -PublisherPublicKey $key -TestChannel:$testing |
-    Where-Object { $_.PSObject.Properties['Archive'] }
-if (!$package -or ![IO.File]::Exists($package.Archive)) { throw 'Desktop build did not return a verified archive.' }
-$setup = & (Join-Path $PSScriptRoot 'Build-EdgeSetup.ps1') -PackageDirectory $package.Directory -Version $Version -OutputDirectory $out -TestScope:$testing |
-    Where-Object { $_ -is [IO.FileInfo] }
-if (!$setup -or !$setup.Exists) { throw 'The installer build did not return a setup executable.' }
-$sign = @{Installer=$setup.FullName;Version=$Version;OutputDirectory=$out}
+$root = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
+$out = Join-Path $root "$channel/$Version"
+$build = @{Version=$Version;OutputDirectory=$out;ArchiveDirectory=(Join-Path $root "test-archives/$channel/$Version")}
+if ($testing) {
+    $build.TestFeed = $TestFeed
+    $build.TestPublicKeyFile = $TestPublicKeyFile
+}
+$candidate = & (Join-Path $PSScriptRoot 'Build-EdgeCandidate.ps1') @build
+$sign = @{Installer=$candidate.Installer;Version=$Version;OutputDirectory=$out}
 if ($testing) {
     $sign.TestPrivateKeyFile = $TestPrivateKeyFile
-    $sign.TestAssetUrl = [uri]::new($feed, "v$Version/$($setup.Name)")
+    $sign.TestAssetUrl = [uri]::new($TestFeed, "v$Version/$([IO.Path]::GetFileName($candidate.Installer))")
 }
 $signed = & (Join-Path $PSScriptRoot 'Sign-EdgeRelease.ps1') @sign
-[pscustomobject]@{Version=$Version;Channel=$channel;Installer=$setup.FullName;Archive=$package.Archive
-    Package=$package.Directory;Manifest=$signed.Manifest;Signature=$signed.Signature;Publisher=$signed.Publisher}
+[pscustomobject]@{Version=$Version;Channel=$channel;Installer=$candidate.Installer;Archive=$candidate.Archive
+    Package=$candidate.Package;Manifest=$signed.Manifest;Signature=$signed.Signature;Publisher=$signed.Publisher}

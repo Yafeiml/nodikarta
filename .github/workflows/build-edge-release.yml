@@ -1,0 +1,210 @@
+name: Build Edge release candidates
+
+on:
+  push:
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+      - 'edge-rehearsal-v[0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: edge-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.event.deleted == false
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+      commit: ${{ steps.tag.outputs.commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check tag against desktop and CLI versions
+        id: tag
+        shell: python
+        run: |
+          import os
+          import re
+          import subprocess
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          part = r"(?:0|[1-9][0-9]*)"
+          semver = rf"{part}\.{part}\.{part}"
+          tag = os.environ["GITHUB_REF_NAME"]
+          match = re.fullmatch(rf"v({semver})", tag) or re.fullmatch(rf"edge-rehearsal-v({semver})-[0-9]+", tag)
+          if not match:
+              raise SystemExit(f"Unsupported Edge release tag: {tag}")
+          version = match.group(1)
+          for project in ("ProjectHub.Edge", "ProjectHub.Edge.Desktop"):
+              file = Path("src", project, f"{project}.csproj")
+              actual = ET.parse(file).findtext("./PropertyGroup/Version")
+              if actual != version:
+                  raise SystemExit(f"{file}: expected {version}, found {actual}")
+          commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              print(f"version={version}\ncommit={commit}", file=out)
+
+  windows:
+    needs: version
+    runs-on: windows-2022
+    timeout-minutes: 70
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          dotnet-version: '10.0.404'
+      - name: Build Windows Native AOT installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if (!(Test-Path -LiteralPath global.json)) {
+            '{"sdk":{"version":"10.0.404","rollForward":"disable"}}' | Set-Content -Encoding utf8NoBOM global.json
+          }
+          if ((dotnet --version) -ne '10.0.404') { throw 'The release SDK must be .NET 10.0.404.' }
+
+          $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
+          $vswhere = Join-Path $pf86 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vs) { throw 'Visual Studio with x64 C++ tools is required.' }
+          Import-Module (Join-Path $vs 'Common7/Tools/Microsoft.VisualStudio.DevShell.dll')
+          Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64'
+
+          $archive = Join-Path $env:RUNNER_TEMP 'w64devkit.7z.exe'
+          Invoke-WebRequest -Uri 'https://github.com/skeeto/w64devkit/releases/download/v2.11.0/w64devkit-x64-2.11.0.7z.exe' -OutFile $archive
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash -ne '54c2bb9962e8a30c8270e34c5efc3d5fee579f53087fa7d435b95fbba2af7b2b') {
+            throw 'MinGW-w64 archive hash mismatch.'
+          }
+          & 7z.exe x -y "-o$env:RUNNER_TEMP" $archive | Out-Null
+          $mingw = Join-Path $env:RUNNER_TEMP 'w64devkit/bin'
+          $nsis = Join-Path $pf86 'NSIS'
+          if (!(Test-Path -LiteralPath (Join-Path $nsis 'makensis.exe'))) {
+            choco install nsis --version=3.10 --yes --no-progress
+          }
+          $env:PATH = "$mingw;$nsis;$env:PATH"
+          if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32' -or (makensis.exe /VERSION) -notmatch '^v3\.10$') {
+            throw 'Expected x64 MinGW-w64 and NSIS 3.10.'
+          }
+          Get-Command cl.exe,link.exe,rc.exe,windres.exe | Select-Object Name,Source
+          & ./deploy/windows/Build-EdgeCandidate.ps1 -Version $env:VERSION -OutputDirectory "$env:RUNNER_TEMP/candidates"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: edge-windows
+          path: ${{ runner.temp }}/candidates/Nodicarta-Edge-${{ needs.version.outputs.version }}-win-x64-setup.exe
+          if-no-files-found: error
+          overwrite: true
+          compression-level: 0
+
+  linux:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.version.outputs.commit }}
+          persist-credentials: false
+      - name: Build and check Debian and portable packages
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/candidates"
+          docker buildx build --platform linux/amd64 --build-arg "EDGE_VERSION=$VERSION" \
+            --output "type=local,dest=$out" -f deploy/linux/Dockerfile.aot .
+          cd "$out"
+          deb="nodicarta-edge_${VERSION}_amd64.deb"
+          tarball="Nodicarta-Edge-${VERSION}-linux-x64.tar.gz"
+          test "$(dpkg-deb -f "$deb" Version)" = "$VERSION"
+          test "$(dpkg-deb -f "$deb" Architecture)" = amd64
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/deb"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP"
+          for binary in ProjectHub.Edge ProjectHub.Edge.Desktop; do
+            portable="$RUNNER_TEMP/Nodicarta-Edge-${VERSION}-linux-x64/$binary"
+            cmp "$portable" "$RUNNER_TEMP/deb/opt/nodicarta-edge/$binary"
+            test "$("$portable" --version)" = "$VERSION"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: edge-linux
+          path: |
+            ${{ runner.temp }}/candidates/*.deb
+            ${{ runner.temp }}/candidates/*.tar.gz
+          if-no-files-found: error
+          overwrite: true
+          compression-level: 0
+
+  draft:
+    needs: [version, windows, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: edge-*
+          merge-multiple: true
+          path: packages
+      - name: Stage three packages on the release draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+          COMMIT: ${{ needs.version.outputs.commit }}
+        run: |
+          set -euo pipefail
+          repo="repos/$GITHUB_REPOSITORY"
+          test "$(gh api "$repo/commits/$TAG" --jq .sha)" = "$COMMIT"
+          names=("Nodicarta-Edge-$VERSION-win-x64-setup.exe" "nodicarta-edge_${VERSION}_amd64.deb" "Nodicarta-Edge-$VERSION-linux-x64.tar.gz")
+          expected=$(printf '%s\n' "${names[@]}" | jq -R . | jq -s 'sort')
+          actual=$(find packages -type f -printf '%P\n' | jq -R . | jq -s 'sort')
+          test "$expected" = "$actual"
+          marker="<!-- nodicarta-edge-source:$COMMIT -->"
+          id=$(gh api --paginate "$repo/releases?per_page=100" \
+            | jq -ser --arg tag "$TAG" '[.[][] | select(.tag_name==$tag)] | if length == 0 then "new" elif length == 1 then (.[0].id|tostring) else error("Ambiguous tag") end')
+          if [[ "$id" = new ]]; then
+            notes=$(printf '%s\n' \
+              "Nodicarta Edge $VERSION includes the desktop app and MCP/CLI for Windows x64 and Linux x86_64." \
+              "On Windows, run the setup executable. On Linux, install the Debian package or extract the portable archive." \
+              "" \
+              "脉络 Edge $VERSION 提供 Windows x64 和 Linux x86_64 的桌面程序及 MCP/CLI。" \
+              "Windows 用户运行安装器。Linux 用户可安装 DEB 包，或将便携包解压到固定目录。" \
+              "" "$marker")
+            id=$(gh api -X POST "$repo/releases" -f tag_name="$TAG" -f target_commitish="$COMMIT" \
+              -f name="Nodicarta Edge $TAG" -f body="$notes" -F draft=true --jq .id)
+          fi
+          check_draft() {
+            gh api "$repo/releases/$id" | jq -e --arg tag "$TAG" --arg sha "$COMMIT" --arg marker "$marker" \
+              '.draft and .tag_name==$tag and .target_commitish==$sha and (.body|contains($marker))' >/dev/null
+          }
+          check_draft
+          assets=$(gh api "$repo/releases/$id/assets?per_page=100")
+          jq -e --argjson expected "$expected" '([.[].name] - $expected) | length==0' <<<"$assets" >/dev/null
+          for name in "${names[@]}"; do
+            size=$(stat -c %s "packages/$name")
+            digest="sha256:$(sha256sum "packages/$name" | cut -d' ' -f1)"
+            metadata=$(jq -c --arg n "$name" '.[] | select(.name==$n)' <<<"$assets")
+            if [[ -z "$metadata" ]]; then
+              check_draft
+              metadata=$(curl --silent --show-error --fail -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'Content-Type: application/octet-stream' --data-binary "@packages/$name" \
+                "https://uploads.github.com/$repo/releases/$id/assets?name=$name")
+            fi
+            jq -e --arg n "$name" --arg d "$digest" --argjson s "$size" \
+              '.name==$n and .state=="uploaded" and .digest==$d and .size==$s' <<<"$metadata" >/dev/null
+          done
+          check_draft
+          echo "Release draft $id is ready for local qualification ($COMMIT)." >> "$GITHUB_STEP_SUMMARY"

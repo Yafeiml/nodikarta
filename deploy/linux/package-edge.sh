@@ -3,7 +3,21 @@ set -euo pipefail
 
 # Run on Linux with the .NET 10 Native AOT toolchain, or package a merged native publish directory.
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-version=1.1.0
+# Both projects declare their product version as a literal. This also works when
+# packaging an existing native publish directory on a machine without the SDK.
+project_version() {
+    sed -nE 's@^[[:space:]]*<Version>([^<]+)</Version>[[:space:]]*$@\1@p' "$repo/src/$1/$1.csproj"
+}
+version=$(project_version ProjectHub.Edge)
+desktop_version=$(project_version ProjectHub.Edge.Desktop)
+if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ || $desktop_version != "$version" ]]; then
+    echo "Expected matching release versions in both projects; CLI='$version', desktop='$desktop_version'." >&2
+    exit 1
+fi
+if [[ -n ${EDGE_VERSION:-} && $EDGE_VERSION != "$version" ]]; then
+    echo "Requested Edge version '$EDGE_VERSION' differs from the checked-out product version '$version'." >&2
+    exit 1
+fi
 deb_version=${version/-/\~}
 out=${1:-"$repo/artifacts/edge-linux/$version"}
 publish=${2:-}
@@ -21,7 +35,7 @@ else
         dest="$work/publish/$project"
         dotnet publish "$repo/src/$project/$project.csproj" \
             -c Release -r linux-x64 --self-contained true -p:PublishAot=true -p:EdgeLinux=true \
-            -p:Version="$version" -p:DebugType=None -p:DebugSymbols=false -o "$dest"
+            -p:DebugType=None -p:DebugSymbols=false -o "$dest"
         install -m 755 "$dest/$project" "$app/$project"
         for native in "$dest"/*.so*; do
             [[ -f "$native" ]] || continue

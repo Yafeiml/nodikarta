@@ -14,6 +14,7 @@ COPY deploy/linux/ deploy/linux/
 COPY deploy/windows/Stop-EdgeTestDesktop.ps1 deploy/windows/
 COPY LICENSE THIRD-PARTY-NOTICES.md ./
 COPY release/licenses/ release/licenses/
+ARG EDGE_VERSION
 RUN bash deploy/linux/package-edge.sh /packages
 
 FROM scratch

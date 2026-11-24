@@ -2,9 +2,10 @@
 [CmdletBinding(DefaultParameterSetName='Public')]
 param(
     [Parameter(Mandatory)][string]$Installer,
-    [Parameter(Mandatory)][ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$Version,
+    [Parameter(Mandatory)][ValidatePattern('\A(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\z')][string]$Version,
     [string]$OutputDirectory,
     [Parameter(ParameterSetName='Public')][string]$KeyName = 'Nodicarta.Edge.Release.P256.v1',
+    [Parameter(ParameterSetName='Public')][ValidateNotNullOrEmpty()][string]$RehearsalTag,
     [Parameter(Mandatory,ParameterSetName='Test')][string]$TestPrivateKeyFile,
     [Parameter(Mandatory,ParameterSetName='Test')][uri]$TestAssetUrl
 )
@@ -16,7 +17,17 @@ $testing = $PSCmdlet.ParameterSetName -eq 'Test'
 $comment = if ($testing) { 'Nodicarta Edge test installer' } else { 'Nodicarta Edge public installer' }
 if ($file.Name -cne $expected -or $file.VersionInfo.ProductVersion.TrimEnd() -notin $Version,"$Version.0" -or
     $file.VersionInfo.Comments -cne $comment) { throw 'Installer filename, version or signing scope does not match.' }
-$url = "https://github.com/Yafeiml/nodikarta/releases/download/v$Version/$expected"
+$channel = 'stable'
+$tag = "v$Version"
+if ($PSBoundParameters.ContainsKey('RehearsalTag')) {
+    $escapedVersion = [regex]::Escape($Version)
+    if ($RehearsalTag -cnotmatch "\Aedge-rehearsal-v$escapedVersion-[0-9]+\z") {
+        throw "RehearsalTag must match edge-rehearsal-v$Version-<digits>."
+    }
+    $channel = 'rehearsal'
+    $tag = $RehearsalTag
+}
+$url = "https://github.com/Yafeiml/nodikarta/releases/download/$tag/$expected"
 $pub = [Security.Cryptography.ECDsa]::Create()
 $signer = $null
 $handle = $null
@@ -39,7 +50,7 @@ try {
     if ($signer.ExportParameters($false).Curve.Oid.Value -ne '1.2.840.10045.3.1.7' -or (($actual -eq $official) -eq $testing)) {
         throw 'The P-256 signing key is not valid for this release channel.'
     }
-    $manifest = [ordered]@{schema=1;product='nodicarta-edge';channel='stable';rid='win-x64';version=$Version;url=$url
+    $manifest = [ordered]@{schema=1;product='nodicarta-edge';channel=$channel;rid='win-x64';version=$Version;url=$url
         sha256=(Get-FileHash -LiteralPath $file.FullName).Hash.ToLowerInvariant();size=$file.Length}
     $bytes = [Text.Encoding]::UTF8.GetBytes(($manifest | ConvertTo-Json -Compress) + "`n")
     $format = [Security.Cryptography.DSASignatureFormat]::IeeeP1363FixedFieldConcatenation
@@ -49,7 +60,7 @@ try {
     if ($signature.Length -ne 64 -or !$verify.VerifyData($bytes,$signature,$sha,$format)) { throw 'Signature self-check failed.' }
     if (!$OutputDirectory) { $OutputDirectory = $file.DirectoryName }
     $out = [IO.Directory]::CreateDirectory([IO.Path]::GetFullPath($OutputDirectory)).FullName
-    $manifestPath = Join-Path $out 'nodicarta-edge-stable-win-x64.json'
+    $manifestPath = Join-Path $out "nodicarta-edge-$channel-win-x64.json"
     [IO.File]::WriteAllBytes($manifestPath, $bytes)
     [IO.File]::WriteAllText("$manifestPath.sig", [Convert]::ToBase64String($signature) + "`n")
     [pscustomobject]@{Manifest=$manifestPath; Signature="$manifestPath.sig"; Publisher=$actual; Uri=$url}

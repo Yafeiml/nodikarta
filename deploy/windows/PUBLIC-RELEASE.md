@@ -1,10 +1,20 @@
 # Windows release
 
+For a public release, follow the [Edge release workflow](../../docs/operations/EDGE_RELEASE.md). GitHub builds the candidates. The release workstation tests the downloaded installer and signs its update manifest. The commands below also support a local build for qualification.
+
 Nodicarta Edge ships a per-user Windows x64 installer containing the Native AOT desktop and MCP/CLI. Building it uses PowerShell 7, the .NET 10 SDK, Visual Studio with the Desktop development with C++ workload and Windows SDK, x64 MinGW-w64 GCC and windres, and NSIS 3 with Unicode support. End users run the setup executable.
 
 ## Build and sign
 
-Run the following command on the release workstation. It publishes the desktop and MCP/CLI together, includes the licenses, builds the installer and signs its update manifest. Artifacts are written under `artifacts/edge-public/stable/<version>`.
+Build the candidate with the SDK used by the Linux build (10.0.404 for Edge 1.1.0). Use the release version from the checked-out desktop and CLI projects. The default configuration embeds the repository's public update key and the stable feed URL.
+
+```powershell
+.\deploy\windows\Build-EdgeCandidate.ps1 -Version 1.1.0 -OutputDirectory .\candidate
+```
+
+The result is `candidate/Nodicarta-Edge-1.1.0-win-x64-setup.exe`. Qualify these exact bytes on the release workstation, then pass that installer to `Sign-EdgeRelease.ps1`. The hosted build needs only the public key. On `windows-2025`, the runner image supplies Visual C++, the Windows SDK and x64 MinGW-w64. Use NSIS 3.11 in the release job. The scripts locate `gcc.exe` and its sibling `windres.exe` from the same x64 toolchain, and locate `makensis.exe` on PATH or under the standard NSIS installation directory.
+
+Existing local releases can still build and sign on the release workstation with the command below. It writes the installer and signed manifest under `artifacts/edge-public/stable/<version>`.
 
 ```powershell
 .\deploy\windows\Publish-EdgePublic.ps1 -Version 1.1.0
