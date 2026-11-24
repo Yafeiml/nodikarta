@@ -43,9 +43,9 @@ try
     const string preamble = "model = 'custom'\r\n";
     static string Global(string exe, string state) => CodexAccessFile.Format(exe, EdgeAccessSetup.GlobalArguments(state), [], true);
     var codex = new GlobalCodexAccess(client);
-    var targets = StandardHarnesses.Detect().Append(SpecialHarnesses.Pi()).ToArray();
+    var targets = StandardHarnesses.Detect(() => false).Append(SpecialHarnesses.Pi()).ToArray();
     var patch = Path.Combine(Environment.GetEnvironmentVariable("DSH_HOME")!, "cordis.patch.yml");
-    var harnesses = new HarnessAccess(client, () => true);
+    var harnesses = new HarnessAccess(client, () => true, () => false);
     foreach (var exe in new[] { previous, missing })
     {
         var expectedCommand = current;

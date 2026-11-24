@@ -36,7 +36,7 @@ internal sealed class GlobalCodexAccess
 
     private static Managed? Inspect(string text)
     {
-        var root = TomlSerializer.Deserialize<TomlTable>(text)!;
+        var root = TomlSerializer.Deserialize(text, CodexToml.Default.TomlTable)!;
         if (!root.TryGetValue("mcp_servers", out var value)) return null;
         if (value is not TomlTable servers) throw new InvalidDataException("Codex 的 mcp_servers 格式无效。");
         if (!servers.TryGetValue("projecthub", out var entry)) return null;
@@ -45,7 +45,7 @@ internal sealed class GlobalCodexAccess
             server.TryGetValue("args", out var a) && a is TomlArray args && args.Cast<object>().ToArray() is ["mcp-stdio-global", "--state", string state] &&
             CodexAccessFile.ExactBlock(text, Format(exe, state)) is { } block)
         {
-            var rest = TomlSerializer.Deserialize<TomlTable>(text.Replace(block, "", StringComparison.Ordinal))!;
+            var rest = TomlSerializer.Deserialize(text.Replace(block, "", StringComparison.Ordinal), CodexToml.Default.TomlTable)!;
             if (!rest.TryGetValue("mcp_servers", out var r) || r is TomlTable table && !table.ContainsKey("projecthub"))
                 return new(block, exe, state);
         }

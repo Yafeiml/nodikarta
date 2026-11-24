@@ -3,12 +3,13 @@
 // Uses the same Playwright dependencies as m1.2.cjs. Creates a private database, role and container.
 const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
-const { createHash, randomBytes, randomUUID } = require('node:crypto');
+const { randomBytes, randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
+const { binaryHashes } = require('./windows-mcp.cjs');
 const { visit, setup, login, submit, projectId, openDeviceAddition, openProjectCreation } = require('./core-fixture.cjs');
 
 const [image, edge, evidence] = process.argv.slice(2);
@@ -357,11 +358,10 @@ async function main() {
             pass('Windows 桌面客户端接替确认和重启恢复');
         }
         if (evidence) {
-            const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
             const report = { completedAt: new Date().toISOString(), host: os.hostname(), scope: 'One Windows host, separate Edge profiles, disposable PostgreSQL database and Linux Core container', image: imageId,
-                edgeSha256: hash(edge), edgeAssemblySha256: hash(path.join(path.dirname(edge),'ProjectHub.Edge.dll')), checks };
+                edgeBinaries: binaryHashes(edge), checks };
             if (process.env.PROJECTHUB_HANDOVER_UI)
-                report.desktopAssemblySha256 = hash(path.join(path.dirname(process.env.PROJECTHUB_HANDOVER_UI),'ProjectHub.Edge.Desktop.dll'));
+                report.desktopBinaries = binaryHashes(process.env.PROJECTHUB_HANDOVER_UI);
             fs.mkdirSync(path.dirname(path.resolve(evidence)), { recursive: true });
             fs.writeFileSync(evidence, JSON.stringify(report, null, 2) + '\n');
         }

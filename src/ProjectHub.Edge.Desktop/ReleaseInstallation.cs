@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
@@ -17,10 +16,9 @@ internal static class ReleaseInstallation
     private const string ReadyPrefix = "Nodicarta.Edge.Install.Ready.";
     private const string ReadyVariable = "NODICARTA_INSTALL_READY_EVENT";
     private static readonly NamedWaitHandleOptions Session = new() { CurrentUserOnly = true, CurrentSessionOnly = true };
-    private sealed record Registration(string? Root, string? Version, string? Icon);
-    private sealed record Transaction(string Target, string? PreviousExe, string State, bool WasRunning, byte[]?[] Before, Registration? Registered);
-    private static bool FixtureBuild => typeof(ReleaseInstallation).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-        .Any(a => a.Key == "NodicartaUpdateTestChannel" && string.Equals(a.Value, "true", StringComparison.OrdinalIgnoreCase));
+    internal sealed record Registration(string? Root, string? Version, string? Icon);
+    internal sealed record Transaction(string Target, string? PreviousExe, string State, bool WasRunning, byte[]?[] Before, Registration? Registered);
+    private static bool FixtureBuild => WindowsAotReleaseMetadata.IsFixture;
 
     internal static void SignalReady()
     {
@@ -133,7 +131,7 @@ internal static class ReleaseInstallation
         CodexAccessFile.CheckPath(path);
         if (!File.Exists(path)) return null;
         if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException("Invalid pending Edge installation.");
-        var tx = JsonSerializer.Deserialize<Transaction>(File.ReadAllBytes(path)) ?? throw new InvalidDataException("Invalid pending Edge installation.");
+        var tx = JsonSerializer.Deserialize(File.ReadAllBytes(path), DesktopJson.Default.Transaction) ?? throw new InvalidDataException("Invalid pending Edge installation.");
         var tracked = TrackedFiles(root, links).ToArray();
         if (!ReleasePackage.IsId(tx.Target) || tx.Before.Length != tracked.Length || !Path.IsPathFullyQualified(tx.State) ||
             tx.PreviousExe != null && !ReleaseLinks.IsEdgeDesktop(tx.PreviousExe)) throw new InvalidDataException("Invalid pending Edge paths.");
@@ -182,6 +180,9 @@ internal static class ReleaseInstallation
         var last = DesktopRunRecord.Read();
         var state = oldExe != null && ReleaseLinks.Same(last?.Executable, oldExe) ? last!.StateDirectory :
             links.ExistingState ?? Program.DefaultStateDirectory;
+        if (links.ExistingState is { } explicitState && !EdgeStatePaths.Same(state, explicitState) &&
+            ReleaseLinks.Same(EdgeStatePaths.Normalize(state), EdgeStatePaths.Normalize(explicitState)))
+            throw new IOException("The last Edge desktop and its shortcuts select independent data directories.");
         var launcherPath = Path.Combine(root, ReleasePackage.Cli);
         if (File.Exists(launcherPath) && (old == null || !KnownLauncher(root, ReleasePackage.Hash(launcherPath))))
             throw new IOException("The MCP launcher belongs to another application.");
@@ -191,7 +192,7 @@ internal static class ReleaseInstallation
         var installed = source.InstallInto(root);
         bool alreadyRunning = oldExe != null && IsResident(oldExe);
         var tx = new Transaction(installed.Id, oldExe, state, alreadyRunning, TrackedFiles(root, links).Select(Snapshot).ToArray(), ReadRegistration(scope));
-        ReleasePackage.WriteAtomically(Path.Combine(root, Journal), JsonSerializer.SerializeToUtf8Bytes(tx));
+        ReleasePackage.WriteAtomically(Path.Combine(root, Journal), JsonSerializer.SerializeToUtf8Bytes(tx, DesktopJson.Default.Transaction));
         try
         {
             if (alreadyRunning) StopExisting(oldExe!);
@@ -202,8 +203,8 @@ internal static class ReleaseInstallation
                 catch (IOException) when (old != null && File.Exists(launcherPath) && KnownLauncher(root, ReleasePackage.Hash(launcherPath))) { }
             }
             ReleasePackage.WriteAtomically(Path.Combine(root, "active-release"), Encoding.ASCII.GetBytes(installed.Id));
-            ReleasePackage.WriteAtomically(Path.Combine(root, Receipt), JsonSerializer.SerializeToUtf8Bytes(new
-                { schema = 1, product = "Nodicarta Edge", channel = DesktopUpdates.Channel, publisher = key }));
+            ReleasePackage.WriteAtomically(Path.Combine(root, Receipt), JsonSerializer.SerializeToUtf8Bytes(new System.Text.Json.Nodes.JsonObject
+                { ["schema"] = 1, ["product"] = "Nodicarta Edge", ["channel"] = DesktopUpdates.Channel, ["publisher"] = key }, DesktopJson.Default.JsonObject));
             var embeddedUninstaller = Path.Combine(source.DirectoryPath, "Uninstall.exe");
             ReleasePackage.WriteAtomically(uninstallPath, File.ReadAllBytes(embeddedUninstaller));
             links.SetTarget(installed.Executable, state);

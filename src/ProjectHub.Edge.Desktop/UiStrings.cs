@@ -6,6 +6,9 @@ internal static class UiStrings
     {
         "脉络 Edge" => "Nodicarta Edge",
         "脉络 Core" => "Nodicarta Core",
+        "等待设备配对" => "Waiting for device pairing",
+        "已连接到 Core" => "Connected to Core",
+        "已复制 MCP 配置" => "MCP configuration copied",
         "配对设备" => "Pair device",
         "确认接替" => "Take over",
         "在 Core 的「设备管理」中选择「添加设备」或「更新设备」生成配对码。" => "In Core, open Devices and choose Add device or Update device to get a pairing code.",
@@ -228,6 +231,11 @@ internal static class UiStrings
         "Core 返回的设备凭据不完整，请核对服务时间和协议。" => "Core returned incomplete device credentials. Check the server clock and protocol.",
         "Core 没有返回项目列表。" => "Core did not return a project list.",
         "Edge 的 SQLite 数据目录必须位于本机磁盘。" => "The Edge data folder must be on a local disk.",
+        "Edge 数据目录必须是当前用户所有的实体目录，权限为 0700。" =>
+            "The Edge data folder must be a directory owned by your user with permissions 0700.",
+        "找不到 Edge 数据文件。" => "The Edge data file could not be found.",
+        "Edge 凭据密钥文件长度错误。" => "The Edge credential key has an invalid length.",
+        "Edge 凭据记录不完整。" => "The Edge credential record is incomplete.",
         "Edge 数据目录需要独立的受限 NTFS 权限。请选择尚未创建的专用子目录或运行安装脚本。" => "The Edge data folder needs restricted NTFS permissions. Choose a new dedicated subfolder or use the installer.",
         "接入" => "Connect",
         "已接入" => "Connected",
@@ -249,6 +257,8 @@ internal static class UiStrings
         "未检测到 DeepSeek Harness。" => "DeepSeek Harness was not detected.",
         "未检测到已安装的智能体。" => "No installed clients were detected.",
         "从绑定目录启动 Claude Code，在 /mcp 中查看 projecthub。" => "Start Claude Code in a linked folder. Check projecthub in /mcp.",
+        "请先打开一次 Claude 桌面版，再返回接入。" => "Open Claude Desktop once, then return here to connect.",
+        "接入后请完全退出并重新打开 Claude。" => "After connecting, quit Claude completely and reopen it.",
         "CLAUDE_CONFIG_DIR 需要指向绝对路径。" => "CLAUDE_CONFIG_DIR must be an absolute path.",
         "已绑定目录自动接入" => "Linked folders connect automatically",
         "在 Cursor 打开已绑定的文件夹，在 Settings → Tools & MCP 中确认 projecthub 已启用。" => "Open a linked folder in Cursor. Enable projecthub under Settings → Tools & MCP.",
@@ -262,6 +272,8 @@ internal static class UiStrings
         "无法确认现有 OpenCode 配置的格式或文件路径，请先核对。" => "Could not verify the format or location of the OpenCode configuration. Check the file.",
         "从绑定目录启动独立的 dsh Host。桌面及 Web 的多个聊天共享 Host 工作目录，切换聊天不会切换脉络项目。" => "Start a separate dsh Host in a linked folder. Desktop and web chats share its working folder and use the same Nodicarta project.",
         "在绑定目录启动 Pi 0.99 或更高版本，通过 /mcp 检查 projecthub。" => "Start Pi 0.99 or later in a linked folder and check projecthub in /mcp.",
+        "在 Pi Desktop 选择 Pi 引擎并打开已绑定的目录。" => "Select the Pi engine in Pi Desktop and open a linked folder.",
+        "已安装 Pi Desktop，请先安装 Pi 引擎（0.99 或更高版本）。" => "Pi Desktop is installed. Install the Pi engine (0.99 or later) to connect.",
         "当前 Pi 版本早于 0.99，请升级后使用内置 MCP。" => "Update Pi to 0.99 or later to use built-in MCP.",
         "已有同名 DeepSeek MCP 或自定义条目，请手动核对。" => "A DeepSeek MCP or custom entry with this name already exists. Review it before continuing.",
         "DeepSeek Harness 配置已就绪。" => "DeepSeek Harness is configured.",
@@ -383,6 +395,21 @@ internal static class UiStrings
             "Edge needs a regular data folder. Check this location: " + source["Edge 需要实体状态目录，请核对：".Length..],
         _ when source.StartsWith("状态目录内含链接：", StringComparison.Ordinal) =>
             "The data folder contains a link: " + source["状态目录内含链接：".Length..],
+        _ when source.IndexOf('：') is var colon && colon > 0 && LinuxDataPathError(source[..colon]) is { } translated =>
+            translated + " " + source[(colon + 1)..],
         _ => source
+    };
+
+    private static string? LinuxDataPathError(string prefix) => prefix switch
+    {
+        "无法检查 Edge 数据路径" => "Could not inspect the Edge data path:",
+        "Edge 数据路径包含链接、非目录或其他用户的目录" => "The data path contains a link, a non-directory, or a directory owned by another user:",
+        "两处均有 Edge 数据，请用 --state 指定要使用的位置" => "Both locations contain Edge data. Specify the folder to use with --state:",
+        "无法创建 Edge 数据目录" => "Could not create the Edge data folder:",
+        "Edge 数据目录已变化" => "The Edge data folder changed during startup:",
+        "Edge 数据目录的上级路径不安全" => "A parent of the Edge data folder is unsafe:",
+        "Edge 需要当前用户所有且权限为 0600 的常规文件" => "Edge requires a regular file owned by your user with permissions 0600:",
+        "无法保存 Edge 数据目录的更改" => "Could not save changes to the Edge data folder:",
+        _ => null
     };
 }

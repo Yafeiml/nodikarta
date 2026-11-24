@@ -9,9 +9,17 @@ using Microsoft.Win32;
 
 namespace ProjectHub.Edge.Desktop;
 
+internal sealed partial class Windows10WindowFrame : Style
+{
+    public Windows10WindowFrame() => AvaloniaXamlLoader.Load(this);
+}
+
 public partial class App : Application
 {
     internal EdgeDesktopClient Client { private get; init; } = null!;
+#if LINUX_DESKTOP
+    internal string? LinuxStartupError { get; init; }
+#endif
     internal EventWaitHandle Wake { private get; init; } = null!;
     internal EventWaitHandle LegacyWake { private get; init; } = null!;
     internal EventWaitHandle Retire { private get; init; } = null!;
@@ -36,14 +44,26 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
-        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
-            Styles.Add((Style)AvaloniaXamlLoader.Load(new Uri("avares://ProjectHub.Edge.Desktop/Windows10WindowFrame.axaml")));
+        if (OperatingSystem.IsWindows() && !OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+            Styles.Add(new Windows10WindowFrame());
     }
 
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            void LocalizeEditMenu()
+            {
+                Resources["StringTextFlyoutCutText"] = UiLanguage.Text("剪切", "Cut");
+                Resources["StringTextFlyoutCopyText"] = UiLanguage.Text("复制", "Copy");
+                Resources["StringTextFlyoutPasteText"] = UiLanguage.Text("粘贴", "Paste");
+            }
+            LocalizeEditMenu();
+            UiLanguage.Changed += LocalizeEditMenu;
+            desktop.Exit += (_, _) => UiLanguage.Changed -= LocalizeEditMenu;
+#if LINUX_DESKTOP
+            LinuxDesktop.OpenWindow(desktop, Client, LinuxStartupError);
+#else
             var lightTaskbarIcon = LoadTrayIcon("edge-tray.ico");
             var darkTaskbarIcon = LoadTrayIcon("edge-tray-dark.ico");
             var open = new NativeMenuItem();
@@ -58,9 +78,6 @@ public partial class App : Application
             };
             void UpdateMenuLanguage()
             {
-                Resources["StringTextFlyoutCutText"] = UiLanguage.Text("剪切", "Cut");
-                Resources["StringTextFlyoutCopyText"] = UiLanguage.Text("复制", "Copy");
-                Resources["StringTextFlyoutPasteText"] = UiLanguage.Text("粘贴", "Paste");
                 open.Header = UiLanguage.Message("打开主界面");
                 access.Header = UiLanguage.Message(accessLabel);
                 about.Header = UiLanguage.Message("关于脉络 Edge");
@@ -179,6 +196,7 @@ public partial class App : Application
                 stop.Dispose();
             };
             if (!Background) ShowMainWindow();
+#endif
         }
         base.OnFrameworkInitializationCompleted();
     }

@@ -1,7 +1,7 @@
 // node tests/windows-mcp.cjs <Edge.exe> <fixture.json> <output.json> [official codex.exe]
 const assert = require('node:assert/strict');
 const {spawn, spawnSync} = require('node:child_process');
-const {randomBytes, randomUUID} = require('node:crypto');
+const {createHash, randomBytes, randomUUID} = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
@@ -182,5 +182,12 @@ async function run(){
             transports:['stdio','streamable-http'],tools:names,official,checks},null,2)+'\n');
     }finally{for(const c of clients)c.close();}
 }
-module.exports={lines,runExe,handshake,tool,argsFor,httpRpc};
+function binaryHashes(executable) {
+    const stem = path.basename(executable, path.extname(executable));
+    const adjacent = [stem + '.dll'];
+    if (stem === 'ProjectHub.Edge') adjacent.push('NodicartaEdgeCli.dll');
+    const files = [executable, ...adjacent.map(name => path.join(path.dirname(executable), name)).filter(fs.existsSync)];
+    return Object.fromEntries(files.map(file => [path.basename(file), createHash('sha256').update(fs.readFileSync(file)).digest('hex')]));
+}
+module.exports={lines,runExe,handshake,tool,argsFor,httpRpc,binaryHashes};
 if(require.main===module)run().catch(e=>{console.error(e.message);process.exitCode=1;});

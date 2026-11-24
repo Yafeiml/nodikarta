@@ -2,7 +2,7 @@
 
 ## 安装与打开
 
-从项目的 GitHub Releases 下载 `Nodicarta-Edge-1.0.0-win-x64-setup.exe`，双击运行。安装器在当前 Windows 账号下安装，默认位置为 `%LOCALAPPDATA%\Programs\Nodicarta\Edge`，随包提供 .NET、Avalonia 和 SQLite。安装完成后从开始菜单打开「Nodicarta Edge」。
+从项目的 GitHub Releases 下载 `Nodicarta-Edge-1.1.0-win-x64-setup.exe`，双击运行。安装器在当前 Windows 账号下安装，默认位置为 `%LOCALAPPDATA%\Programs\Nodicarta\Edge`，桌面端和 MCP/CLI 均采用 Native AOT，用户无需安装 .NET。安装完成后从开始菜单打开「Nodicarta Edge」。
 
 在主窗口右上角点「语言」左侧的「设置」。首次安装默认开启「登录时启动」：下次登录 Windows 后，Edge 静默进入托盘；点托盘图标即可打开窗口。这里也可关闭自启，选择会跨升级保留。
 
@@ -34,12 +34,14 @@
 
 ## 接入 AI 客户端
 
-从托盘菜单或设备概览打开「智能体接入」。「常用客户端」列出 Codex、Claude Code、Google Antigravity、Cursor、OpenCode、DeepSeek Harness 和 Pi。首次点击「接入」，也可点「一键接入已安装」。成功后，客户端名称下显示「已接入」，Edge 会在后台维护配置。同名自定义项会保留，并在对应行提示核对。
+从托盘菜单或设备概览打开「智能体接入」。「常用客户端」支持 Codex、Claude 桌面版、Claude Code、Google Antigravity、Cursor、OpenCode、DeepSeek Harness 和 Pi。首次点击「接入」，也可点「一键接入已安装」。成功后，客户端名称下显示「已接入」，Edge 会在后台维护配置。同名自定义项会保留，并在对应行提示核对。
 
 | 接入方式 | 操作 |
 | --- | --- |
 | Codex | 首次点「接入」，即可为当前 Windows 用户配置 MCP 并安装通用 Skills。即使未检测到 Codex，也可以手动接入。行尾「复制」可取得 TOML。 |
-| Claude Code、Cursor、OpenCode、Pi | 接入后在客户端打开绑定目录，重新加载 MCP。行尾「复制」可取得该客户端使用的 JSON。Pi 使用内置 MCP 功能。 |
+| Claude 桌面版 | 首次安装后先打开一次 Claude。在 Edge 点「接入」，再完全退出并重新打开 Claude。桌面版和 Claude Code 同时安装时可分别接入。只有会话向 Edge 提供一个已绑定的本机目录时，才能使用该项目的工具。 |
+| Claude Code、Cursor、OpenCode | 接入后在客户端打开绑定目录，重新加载 MCP。行尾「复制」可取得该客户端使用的 JSON。 |
+| Pi Desktop | 安装 Pi 0.99 或更高版本的引擎，在 Edge 点「接入」，然后在 Pi Desktop 选择 Pi 引擎并打开已绑定的目录。 |
 | Google Antigravity | 点一次「接入」。Edge 会为已有和以后绑定的目录配置桌面连接。在 Antigravity 中从绑定目录新建聊天，直接问项目问题即可。命令行版 `agy` 也可从绑定目录启动。 |
 | DeepSeek Harness | 行尾「复制」可取得 Cordis 的 YAML 补丁。重新启动 Host，从已绑定的目录启动独立 Host 可让连接使用对应项目。 |
 | 其他客户端 · STDIO | 点「复制 STDIO 配置」，将 JSON 放入客户端的 MCP 设置。让客户端从聊天的工作目录启动 Edge，同一份配置可以访问不同的已绑定目录。 |
@@ -86,7 +88,7 @@
 
 **1.5.1** 查询离线设备时会核对同一设备、同一指标的多份记录，按实际测量时间比较。两份最新证据在同一时刻互相矛盾时，回复会保留分歧，等待设备恢复后复查。
 
-**升级已接入的 Edge。** 自动更新或运行新版安装器即可。七种常用客户端共用安装目录下的固定入口 `ProjectHub.Edge.exe`。已有受管配置会从旧版本目录迁到这个入口，此后的升级继续显示「已接入」。新建的 MCP 连接使用升级后的版本。直接从解压目录运行的便携版使用该目录中的程序。
+**升级已接入的 Edge。** 自动更新或运行新版安装器即可。常用客户端共用安装目录下的固定入口 `ProjectHub.Edge.exe`。已有受管配置会从旧版本目录迁到这个入口，此后的升级继续显示「已接入」。新建的 MCP 连接使用升级后的版本。直接从解压目录运行的便携版使用该目录中的程序。
 
 **移动桌面程序。** 一台 Windows 电脑只运行一个常驻 Edge 桌面。重复打开会唤起已有窗口。从新位置打开时，Edge 会接替当前用户原来的实例，沿用设备数据，并自动调整此前为该设备写入的智能体配置。对于自定义配置、其他数据目录或暂时无法核实的路径，Edge 会保留原有设置。
 

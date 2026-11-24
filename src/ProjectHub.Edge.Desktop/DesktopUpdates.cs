@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -36,8 +35,7 @@ internal sealed class DesktopUpdates
         this.http = http;
     }
 
-    private static string? Metadata(string name) => typeof(DesktopUpdates).Assembly
-        .GetCustomAttributes<AssemblyMetadataAttribute>().SingleOrDefault(a => a.Key == name)?.Value;
+    private static string? Metadata(string name) => WindowsAotReleaseMetadata.Get(name);
 
     internal static string? PublisherKeyId => string.IsNullOrEmpty(Metadata("NodicartaUpdatePublicKey")) ? null :
         Convert.ToHexString(SHA256.HashData(Convert.FromBase64String(Metadata("NodicartaUpdatePublicKey")!)));

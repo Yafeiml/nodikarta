@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+using System.Reflection;
 using System.Net;
 using System.ServiceProcess;
 using System.Text;
@@ -8,7 +10,8 @@ namespace ProjectHub.Edge;
 internal static class Program
 {
     private const string Usage = """
-        Nodicarta Edge for Windows
+        Nodicarta Edge
+          --version                                   显示 Edge 发行版本
           pair --core URL [--label NAME] [--replace]   从终端或标准输入读取一次性配对码
           projects                                    读取当前可见项目
           bind --project UUID --path DIRECTORY        将本地目录关联到获准项目
@@ -17,9 +20,9 @@ internal static class Program
           status                                      查询配对和在线状态
           migrate-default-state                       迁移旧默认状态目录并输出当前实体路径
           run                                         在前台保持连接
-          codex-link --project ID --path DIR --codex EXE --thread ID --name NAME
+          codex-link --project ID --path DIR --codex EXE --thread ID --name NAME    Windows
           register-endpoint --project ID --binding ID --name NAME    登记人工领取端点
-          dispatch [--watch]                          执行派工或持续检查
+          dispatch [--watch]                          在 Windows 执行派工或持续检查
           mcp-stdio-global [--workspace-roots | --workspace-env CLAUDE_PROJECT_DIR|PROJECTHUB_WORKSPACE | --bound-workspace UUID]    通过客户端工作目录匹配本机绑定
           mcp-stdio --project ID --binding ID [--workspace ID] [--mode readOnly|readWrite|auto] [--endpoint ID] [--tools NAME,NAME]
           mcp-http --project ID --binding ID --port PORT [--workspace ID] [--mode readOnly|readWrite|auto] [--endpoint ID] [--tools NAME,NAME]
@@ -27,11 +30,15 @@ internal static class Program
           sync --project ID --binding ID --mode readWrite    重发本地待同步内容
         可用 --state DIRECTORY 或 NODICARTA_EDGE_STATE 指定专用数据目录。兼容 PROJECTHUB_EDGE_STATE。
         """;
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static async Task<int> Main(string[] args)
+    internal static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+        if (args is ["--version"])
+        {
+            Console.WriteLine(typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion.Split('+', 2)[0]);
+            return 0;
+        }
         if (args.Length == 0 || args[0] is "--help" or "-h" or "help") { Console.WriteLine(Usage); return 0; }
         using var stop = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
@@ -39,8 +46,11 @@ internal static class Program
         {
             var values = args.ToList();
             var directory = Option(values, "--state") ?? Environment.GetEnvironmentVariable("NODICARTA_EDGE_STATE")
-                ?? Environment.GetEnvironmentVariable("PROJECTHUB_EDGE_STATE") ?? EdgeStatePaths.MachineDefault;
+                ?? Environment.GetEnvironmentVariable("PROJECTHUB_EDGE_STATE")
+                ?? (OperatingSystem.IsWindows() ? EdgeStatePaths.MachineDefault : EdgeStatePaths.LocalDefault);
             var command = values.FirstOrDefault();
+            if (!OperatingSystem.IsWindows() && command is ("service" or "codex-link" or "dispatch"))
+                throw new ArgumentException("此命令仅在 Windows 版 Edge 中提供。");
             if (command == "migrate-default-state")
             {
                 NoOptions(values.Skip(1).ToList());
@@ -50,7 +60,7 @@ internal static class Program
             using var signal = command == "dispatch" && values.Contains("--watch") &&
                 Environment.GetEnvironmentVariable("PROJECTHUB_DISPATCH_STOP_FILE") is { Length: > 0 } stopFile
                 ? new Timer(_ => { if (File.Exists(stopFile)) stop.Cancel(); }, null, 1000, 1000) : null;
-            if (command == "service")
+            if (OperatingSystem.IsWindows() && command == "service")
             {
                 using var service = new EdgeWindowsService(directory);
                 ServiceBase.Run(service);
@@ -77,7 +87,7 @@ internal static class Program
                     Print(device);
                     return 0;
                 case "projects":
-                    NoOptions(options); Print(await session.ProjectsAsync(stop.Token)); return 0;
+                    NoOptions(options); Print((await session.ProjectsAsync(stop.Token)).ToArray()); return 0;
                 case "bind":
                     var project = Guid.Parse(RequiredOption(options, "--project"));
                     var path = RequiredOption(options, "--path");
@@ -90,20 +100,23 @@ internal static class Program
                     var directoryPath = RequiredOption(options, "--path");
                     NoOptions(options);
                     session.Unbind(projectId, workspaceId, directoryPath);
-                    Print(new { projectId, workspaceId, removed = true });
+                    Print(new JsonObject { ["projectId"] = projectId, ["workspaceId"] = workspaceId, ["removed"] = true });
                     return 0;
                 case "bindings":
                     var local = options.Remove("--local");
                     NoOptions(options);
-                    if (local) Print(session.EnumerateLocalWorkspaces().Select(row => new { row.ProjectId, row.WorkspaceId, row.LocalPath }));
-                    else Print(await session.BindingsAsync(stop.Token));
+                    if (local) Print(new JsonArray(session.EnumerateLocalWorkspaces().Select(row => new JsonObject {
+                        ["projectId"] = row.ProjectId, ["workspaceId"] = row.WorkspaceId, ["localPath"] = row.LocalPath
+                    }).ToArray()));
+                    else Print((await session.BindingsAsync(stop.Token)).ToArray());
                     return 0;
                 case "status":
                     NoOptions(options);
                     var identity = session.GetIdentity();
                     using (var res = await session.SendAsync(HttpMethod.Get, "/v1/projects", ct: stop.Token))
                     {
-                        Print(new { identity.DeviceId, identity.EdgeId, identity.CoreUrl, online = res.IsSuccessStatusCode, http = (int)res.StatusCode });
+                        Print(new JsonObject { ["deviceId"] = identity.DeviceId, ["edgeId"] = identity.EdgeId,
+                            ["coreUrl"] = identity.CoreUrl.OriginalString, ["online"] = res.IsSuccessStatusCode, ["http"] = (int)res.StatusCode });
                         return res.IsSuccessStatusCode ? 0 : 1;
                     }
                 case "run":
@@ -124,7 +137,7 @@ internal static class Program
         }
     }
 
-    private static void Print(object value) => Console.WriteLine(JsonSerializer.Serialize(value, Json));
+    private static void Print(object value) => Console.WriteLine(JsonSerializer.Serialize(value, EdgeJson.Web.Object));
 
     private static string? Option(List<string> options, string name)
     {
@@ -190,7 +203,7 @@ internal static class Program
             catch (OperationCanceledException) { state = "offline"; }
             var output = Path.Combine(session.StateDirectory, "connection.json");
             var staging = output + "." + Environment.ProcessId + ".tmp";
-            await File.WriteAllTextAsync(staging, JsonSerializer.Serialize(new { checkedAt = DateTimeOffset.UtcNow, state }), ct);
+            await File.WriteAllTextAsync(staging, new JsonObject { ["checkedAt"] = DateTimeOffset.UtcNow, ["state"] = state }.ToJsonString(), ct);
             File.Move(staging, output, true);
         } while (await timer.WaitForNextTickAsync(ct));
     }
@@ -208,6 +221,7 @@ internal static class Program
     }
 }
 
+[System.Runtime.Versioning.SupportedOSPlatform("windows")]
 internal sealed class EdgeWindowsService : ServiceBase
 {
     private readonly string directory;

@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404-noble-aot AS restore
+WORKDIR /src
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+COPY src/ProjectHub.Edge/ProjectHub.Edge.csproj src/ProjectHub.Edge/
+COPY src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj src/ProjectHub.Edge.Desktop/
+RUN dotnet restore src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj \
+    -r linux-x64 -p:PublishAot=true -p:EdgeLinux=true
+
+FROM restore AS build
+COPY src/ProjectHub.Edge/ src/ProjectHub.Edge/
+COPY src/ProjectHub.Edge.Desktop/ src/ProjectHub.Edge.Desktop/
+COPY skills/ skills/
+COPY deploy/linux/ deploy/linux/
+COPY deploy/windows/Stop-EdgeTestDesktop.ps1 deploy/windows/
+COPY LICENSE THIRD-PARTY-NOTICES.md ./
+COPY release/licenses/ release/licenses/
+RUN bash deploy/linux/package-edge.sh /packages
+
+FROM scratch
+COPY --from=build /packages/ /

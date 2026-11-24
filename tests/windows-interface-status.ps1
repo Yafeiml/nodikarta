@@ -188,7 +188,7 @@ try {
     CheckScroll $access
     Snapshot 'device-access'
     Click $access 'CloseGlobalAccessButton'
-    Pass '目录自检正常；设备接入页提供七个智能体与手动 STDIO 入口。'
+    Pass '目录自检正常；设备接入页提供客户端列表与手动 STDIO 入口。'
 
     $listener.Kill()
     $listener.WaitForExit()

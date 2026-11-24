@@ -3,11 +3,16 @@
     <OutputType>WinExe</OutputType>
     <Product>Nodicarta Edge</Product>
     <AssemblyTitle>Nodicarta Edge</AssemblyTitle>
-    <Version>1.0.1</Version>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <Version>1.1.0</Version>
+    <LinuxDesktop Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('linux-')) or ('$(RuntimeIdentifier)' == '' and ('$(OS)' != 'Windows_NT' or '$(EdgeLinux)' == 'true'))">true</LinuxDesktop>
+    <TargetFramework Condition="'$(LinuxDesktop)' == 'true'">net10.0</TargetFramework>
+    <TargetFramework Condition="'$(LinuxDesktop)' != 'true'">net10.0-windows</TargetFramework>
+    <DefineConstants Condition="'$(LinuxDesktop)' == 'true'">$(DefineConstants);LINUX_DESKTOP</DefineConstants>
+    <OutputType Condition="'$(LinuxDesktop)' == 'true'">Exe</OutputType>
     <ApplicationIcon>Assets/edge.ico</ApplicationIcon>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
@@ -15,7 +20,9 @@
     <AssemblyMetadata Include="NodicartaUpdateFeed" Value="$(NodicartaUpdateFeed)" />
     <AssemblyMetadata Include="NodicartaUpdatePublicKey" Value="$(NodicartaUpdatePublicKey)" />
     <AssemblyMetadata Include="NodicartaUpdateTestChannel" Value="$(NodicartaUpdateTestChannel)" />
-    <PackageReference Include="Avalonia.Win32" Version="11.3.13" />
+    <PackageReference Include="Avalonia.Win32" Version="11.3.13" Condition="'$(LinuxDesktop)' != 'true'" />
+    <PackageReference Include="Avalonia.X11" Version="11.3.13" Condition="'$(LinuxDesktop)' == 'true'" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" Condition="'$(LinuxDesktop)' == 'true'" />
     <PackageReference Include="Avalonia.Skia" Version="11.3.13" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.13" />
     <PackageReference Include="Svg.Controls.Avalonia" Version="11.3.9.5" />

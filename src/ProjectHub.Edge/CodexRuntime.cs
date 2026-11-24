@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
@@ -139,9 +140,9 @@ public sealed class CodexRuntime
             var cursors = new HashSet<string>();
             do
             {
-                var page = await reader.CallAsync("thread/turns/list", new
+                var page = await reader.CallAsync("thread/turns/list", new JsonObject
                 {
-                    threadId, cursor, limit = 4, sortDirection = "desc", itemsView = "full"
+                    ["threadId"] = threadId, ["cursor"] = cursor, ["limit"] = 4, ["sortDirection"] = "desc", ["itemsView"] = "full"
                 }, timeout.Token);
                 foreach (var turn in page.GetProperty("data").EnumerateArray())
                 {
@@ -182,9 +183,9 @@ public sealed class CodexRuntime
 
     private async Task VerifyBindingAsync(History reader, CancellationToken ct)
     {
-        await reader.CallAsync("initialize", new { clientInfo = new { name = "projecthub-edge", version = "1" } }, ct);
+        await reader.CallAsync("initialize", new JsonObject { ["clientInfo"] = new JsonObject { ["name"] = "projecthub-edge", ["version"] = "1" } }, ct);
         await reader.NotifyInitializedAsync(ct);
-        var meta = await reader.CallAsync("thread/read", new { threadId, includeTurns = false }, ct);
+        var meta = await reader.CallAsync("thread/read", new JsonObject { ["threadId"] = threadId, ["includeTurns"] = false }, ct);
         var thread = meta.GetProperty("thread");
         var cwd = thread.GetProperty("cwd").GetString();
         if (!Guid.TryParse(thread.GetProperty("id").GetString(), out var id) || id != threadId ||
@@ -229,7 +230,7 @@ public sealed class CodexRuntime
         private int request;
 
         public Task NotifyInitializedAsync(CancellationToken ct) =>
-            WriteAsync(JsonSerializer.Serialize(new { method = "initialized" }), ct);
+            WriteAsync("""{"method":"initialized"}""", ct);
 
         private async Task WriteAsync(string json, CancellationToken ct)
         {
@@ -237,10 +238,10 @@ public sealed class CodexRuntime
             await child.StandardInput.FlushAsync(ct);
         }
 
-        public async Task<JsonElement> CallAsync(string method, object parameters, CancellationToken ct)
+        public async Task<JsonElement> CallAsync(string method, JsonObject parameters, CancellationToken ct)
         {
             var id = ++request;
-            await WriteAsync(JsonSerializer.Serialize(new { id, method, @params = parameters }), ct);
+            await WriteAsync(new JsonObject { ["id"] = id, ["method"] = method, ["params"] = parameters }.ToJsonString(), ct);
             while (await child.StandardOutput.ReadLineAsync(ct) is { } line)
             {
                 using var response = JsonDocument.Parse(line);

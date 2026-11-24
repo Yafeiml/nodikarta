@@ -124,7 +124,7 @@ try {
     if ($EvidenceDirectory) {
         $null = [IO.Directory]::CreateDirectory($EvidenceDirectory)
         [ordered]@{version=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion;time=[DateTimeOffset]::Now.ToString('o');
-            desktopAssemblySha256=(Get-FileHash (Join-Path (Split-Path $exe) 'ProjectHub.Edge.Desktop.dll')).Hash;checks=$checks} |
+            desktopImageSha256=(Get-EdgeDesktopImageHash $exe);checks=$checks} |
             ConvertTo-Json | Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'preferences.json')
     }
 } finally {

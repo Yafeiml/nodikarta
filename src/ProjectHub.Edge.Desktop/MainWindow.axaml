@@ -67,7 +67,7 @@
                 <TextBlock Classes="titleBrandName" Text="{desktop:Tr '脉络 Edge'}" AutomationProperties.AutomationId="MainBrandName"/>
               </StackPanel>
             </Border>
-            <Button Grid.Column="1" Classes="titleAction" MinWidth="48" Content="{desktop:Tr 设置, English='Settings'}"
+            <Button x:Name="PreferencesButton" Grid.Column="1" Classes="titleAction" MinWidth="48" Content="{desktop:Tr 设置, English='Settings'}"
                     Click="OpenAppPreferences" AutomationProperties.AutomationId="AppPreferencesButton"/>
             <Button x:Name="LanguageButton" Grid.Column="2" Classes="titleAction" Width="84" Click="OpenLanguageMenu"
                     AutomationProperties.AutomationId="LanguageButton" AutomationProperties.Name="{desktop:Tr '语言', English='Language'}">
@@ -86,7 +86,7 @@
                 </ContextMenu>
               </Button.ContextMenu>
             </Button>
-            <Button Grid.Column="3" Classes="titleClose" Click="HideWindow"
+            <Button x:Name="CloseButton" Grid.Column="3" Classes="titleClose" Click="HideWindow"
                     ToolTip.Tip="{desktop:Tr '收回到托盘'}" AutomationProperties.Name="{desktop:Tr '收回到托盘'}" AutomationProperties.AutomationId="HideWindow">
               <Path/>
             </Button>
@@ -118,7 +118,7 @@
                 <TextBlock x:Name="PairHint" Classes="hint" TextWrapping="Wrap" AutomationProperties.AutomationId="PairingHint"/>
               </StackPanel>
               <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-                <Button Classes="pairAction openCoreAction" Click="OpenCore" AutomationProperties.Name="{desktop:Tr '打开 Core'}" AutomationProperties.AutomationId="PairOpenCore">
+                <Button x:Name="PairOpenCoreButton" Classes="pairAction openCoreAction" Click="OpenCore" AutomationProperties.Name="{desktop:Tr '打开 Core'}" AutomationProperties.AutomationId="PairOpenCore">
                   <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"><TextBlock Text="{desktop:Tr '打开 Core'}" VerticalAlignment="Center"/><Path Classes="coreLinkIcon"/></StackPanel>
                 </Button>
                 <Button x:Name="PairButton" Classes="pairAction primary" Content="{desktop:Tr '配对设备'}" Click="Pair" AutomationProperties.AutomationId="PairButton"/>
@@ -204,6 +204,9 @@
                         </Grid>
                       </Button>
                     </Grid>
+                    <TextBox x:Name="FolderPath" IsVisible="False" Watermark="{desktop:Tr '本地目录绝对路径', English='Absolute local folder path'}"
+                             AutomationProperties.Name="{desktop:Tr '本地目录绝对路径', English='Absolute local folder path'}"
+                             AutomationProperties.AutomationId="FolderPath"/>
                     <StackPanel>
                       <TextBlock x:Name="EmptyBindings" Classes="hint" Text="{desktop:Tr '尚未绑定目录。选择此项目在本机使用的文件夹。'}" TextWrapping="Wrap"/>
                       <ItemsControl x:Name="BoundDirectories" AutomationProperties.AutomationId="BoundDirectories">

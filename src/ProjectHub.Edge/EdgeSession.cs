@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -18,9 +19,9 @@ public sealed record LocalBinding(Guid ProjectId, Guid BindingId, Guid Workspace
 
 public sealed partial class EdgeSession
 {
-    private sealed record Tokens(Guid DeviceId, Guid EdgeId, string AccessToken, string RefreshToken, DateTimeOffset ExpiresAt);
+    internal sealed record Tokens(Guid DeviceId, Guid EdgeId, string AccessToken, string RefreshToken, DateTimeOffset ExpiresAt);
     private sealed record Credentials(Uri Core, Tokens Tokens, string Status);
-    private sealed record ProjectList(DeviceProject[] Items);
+    internal sealed record ProjectList(DeviceProject[] Items);
     private sealed class PairingRejected(string message) : InvalidOperationException(message);
     private static readonly HttpClient Client = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
         { Timeout = TimeSpan.FromSeconds(30) };
@@ -36,14 +37,22 @@ public sealed partial class EdgeSession
         Profile = profile;
         var directory = StateDirectory = ProfilePath(root, profile);
         if (profile != Guid.Empty) EnsurePrivateDirectory(directory);
+        var database = Path.Combine(directory, "edge.sqlite3");
+        if (OperatingSystem.IsLinux()) LinuxState.EnsurePrivateFile(database);
         connectionString = new SqliteConnectionStringBuilder {
-            DataSource = Path.Combine(directory, "edge.sqlite3"), Pooling = false, DefaultTimeout = 15
+            DataSource = database, Pooling = false, DefaultTimeout = 15
         }.ToString();
         InitializeStorage();
     }
 
     internal static void EnsurePrivateDirectory(string directory)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            LinuxState.EnsurePrivateDirectory(directory);
+            return;
+        }
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException();
         if (directory.StartsWith(@"\\") || new DriveInfo(Path.GetPathRoot(directory)!).DriveType == DriveType.Network)
             throw new InvalidOperationException("Edge 的 SQLite 数据目录必须位于本机磁盘。");
         var folder = new DirectoryInfo(directory);
@@ -73,7 +82,7 @@ public sealed partial class EdgeSession
         using var cmd = db.CreateCommand();
         cmd.CommandText = "PRAGMA user_version";
         if (Convert.ToInt64(cmd.ExecuteScalar()) > 1) throw new InvalidOperationException("当前 Edge 无法打开更高版本的数据，请使用新版程序。");
-        cmd.CommandText = """
+        cmd.CommandText = $"""
             PRAGMA journal_mode=WAL;
             BEGIN IMMEDIATE;
             CREATE TABLE IF NOT EXISTS identity (
@@ -81,7 +90,7 @@ public sealed partial class EdgeSession
                 credentials BLOB NOT NULL, status TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS workspaces (
-                device_id TEXT NOT NULL, project_id TEXT NOT NULL, local_path TEXT COLLATE NOCASE NOT NULL,
+                device_id TEXT NOT NULL, project_id TEXT NOT NULL, local_path TEXT COLLATE {(OperatingSystem.IsWindows() ? "NOCASE" : "BINARY")} NOT NULL,
                 workspace_id TEXT NOT NULL UNIQUE, PRIMARY KEY(device_id,project_id,local_path)
             );
             CREATE TABLE IF NOT EXISTS workspace_access (
@@ -131,8 +140,8 @@ public sealed partial class EdgeSession
         cmd.CommandText = "SELECT core,credentials,status FROM identity WHERE singleton=1";
         using var row = cmd.ExecuteReader();
         if (!row.Read()) return null;
-        var plain = ProtectedData.Unprotect((byte[])row.GetValue(1), null, DataProtectionScope.LocalMachine);
-        try { return new(new Uri(row.GetString(0)), JsonSerializer.Deserialize<Tokens>(plain)!, row.GetString(2)); }
+        var plain = UnprotectSecret(StateDirectory, (byte[])row.GetValue(1));
+        try { return new(new Uri(row.GetString(0)), JsonSerializer.Deserialize(plain, EdgeJson.Default.Tokens)!, row.GetString(2)); }
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
 
@@ -155,9 +164,9 @@ public sealed partial class EdgeSession
 
     private void Save(Credentials device, string? label = null)
     {
-        var plain = JsonSerializer.SerializeToUtf8Bytes(device.Tokens);
+        var plain = JsonSerializer.SerializeToUtf8Bytes(device.Tokens, EdgeJson.Default.Tokens);
         byte[] secret;
-        try { secret = ProtectedData.Protect(plain, null, DataProtectionScope.LocalMachine); }
+        try { secret = ProtectSecret(StateDirectory, plain); }
         finally { CryptographicOperations.ZeroMemory(plain); }
         using var db = ConnectStorage();
         using var transaction = db.BeginTransaction();
@@ -191,7 +200,7 @@ public sealed partial class EdgeSession
         {
             ct.ThrowIfCancellationRequested();
             try { return new FileStream(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
-            catch (IOException ex) when ((ex.HResult & 0xffff) == 32 && attempt < 450)
+            catch (IOException ex) when (((ex.HResult & 0xffff) == 32 || OperatingSystem.IsLinux() && (ex.HResult & 0xffff) == 11) && attempt < 450)
             { await Task.Delay(100, ct).ConfigureAwait(false); }
         }
     }
@@ -233,8 +242,9 @@ public sealed partial class EdgeSession
 
     private async Task<Tokens> RedeemAsync(Uri core, Guid id, string secret, string label, CancellationToken ct)
     {
+        if (OperatingSystem.IsLinux()) LinuxState.PrepareCredentials(StateDirectory);
         using var response = await PostCoreJsonAsync(new Uri(core, $"/v1/device-pairings/{id:D}/redeem"),
-            new { oneTimeCode = secret, deviceLabel = label, instanceNonce = Guid.NewGuid().ToString("N") }, ct);
+            new JsonObject { ["oneTimeCode"] = secret, ["deviceLabel"] = label, ["instanceNonce"] = Guid.NewGuid().ToString("N") }, ct);
         if (response.StatusCode == HttpStatusCode.Unauthorized)
             throw new PairingRejected("配对码无效、已过期或已使用，请在 Core 的设备管理页重新生成。");
         if (response.StatusCode == HttpStatusCode.BadRequest)
@@ -245,7 +255,7 @@ public sealed partial class EdgeSession
 
     private static async Task<Tokens> ReceiveTokensAsync(HttpResponseMessage response, CancellationToken ct, bool acceptExpired = false)
     {
-        var tokens = await response.Content.ReadFromJsonAsync<Tokens>(cancellationToken: ct);
+        var tokens = await response.Content.ReadFromJsonAsync(EdgeJson.Web.Tokens, ct);
         if (tokens is not { DeviceId: var id, EdgeId: var edge, AccessToken.Length: 64, RefreshToken.Length: 64 } ||
             id == Guid.Empty || edge == Guid.Empty || tokens.ExpiresAt == default || (!acceptExpired && tokens.ExpiresAt <= DateTimeOffset.UtcNow))
             throw new InvalidOperationException("Core 返回的设备凭据不完整，请核对服务时间和协议。");
@@ -269,7 +279,7 @@ public sealed partial class EdgeSession
         // Core revokes the device when a spent refresh token is replayed. Persist intent before sending it.
         Save(device with { Status = "pending" });
         using var response = await PostCoreJsonAsync(new Uri(device.Core, "/v1/tokens/refresh"),
-            new { refreshToken = device.Tokens.RefreshToken }, ct, EdgeRequestSource.Background);
+            new JsonObject { ["refreshToken"] = device.Tokens.RefreshToken }, ct, EdgeRequestSource.Background);
         if (response.StatusCode == HttpStatusCode.Unauthorized) { Save(device with { Status = "invalid" }); return null; }
         if (response.StatusCode == HttpStatusCode.TooManyRequests) Save(device);
         response.EnsureSuccessStatusCode();
@@ -281,9 +291,9 @@ public sealed partial class EdgeSession
         return updated;
     }
 
-    private async Task<HttpResponseMessage> PostCoreJsonAsync<T>(Uri uri, T body, CancellationToken ct, EdgeRequestSource? source = null)
+    private async Task<HttpResponseMessage> PostCoreJsonAsync(Uri uri, JsonObject body, CancellationToken ct, EdgeRequestSource? source = null)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = JsonContent.Create(body) };
+        using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = JsonContent.Create(body, EdgeJson.Web.JsonObject) };
         (source ?? RequestSource).ApplyTo(request);
         return await Client.SendAsync(request, ct);
     }
@@ -326,7 +336,7 @@ public sealed partial class EdgeSession
     {
         using var response = await SendAsync(HttpMethod.Get, "/v1/projects", ct: ct);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<ProjectList>(cancellationToken: ct))?.Items
+        return (await response.Content.ReadFromJsonAsync(EdgeJson.Web.ProjectList, ct))?.Items
             ?? throw new InvalidOperationException("Core 没有返回项目列表。");
     }
 
@@ -352,7 +362,7 @@ public sealed partial class EdgeSession
             FinishAntigravityBinding(alias);
             return alias with { BindingId = project.BindingId, AccessMode = project.AccessMode, Name = project.Name };
         }
-        if (existing.Any(row => row.ProjectId == projectId && row.LocalPath.Equals(directory, StringComparison.OrdinalIgnoreCase)))
+        if (existing.Any(row => row.ProjectId == projectId && row.LocalPath.Equals(directory, WorkspacePath.Comparison)))
             throw new InvalidOperationException("目录与已有绑定仅大小写不同，实际位置不一致。");
         using var cmd = db.CreateCommand();
         cmd.Transaction = transaction;

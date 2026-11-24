@@ -29,7 +29,7 @@ try
     foreach (var name in new[] { "codex", "claude", "cursor", "opencode", "agy", "pi", "dsh" })
         File.WriteAllText(Path.Combine(launcher, name + ".cmd"), "@exit /b 1"); // Detection must never run a launcher.
 
-    var standard = StandardHarnesses.Detect().Append(SpecialHarnesses.Pi()).ToList();
+    var standard = StandardHarnesses.Detect(() => false).Append(SpecialHarnesses.Pi()).ToList();
     Check(standard.Count == 5 && standard.Select(h => h.Id).Distinct().Count() == 5, "五个 JSON 客户端");
     foreach (var target in standard)
     {
@@ -49,7 +49,7 @@ try
     var agy = standard.Single(h => h.Id == "antigravity");
     Directory.CreateDirectory(Path.GetDirectoryName(agy.ConfigPath)!);
     var client = new EdgeDesktopClient(state);
-    var harnesses = new HarnessAccess(client);
+    var harnesses = new HarnessAccess(client, detectClaudeDesktopPackage: () => false);
     var current = GlobalCodexAccess.CurrentCommand;
     File.WriteAllText(agy.ConfigPath, """{"mcpServers":{"unrelated":{"command":"keep"}}}""");
     harnesses.RestoreAntigravity();
@@ -108,7 +108,7 @@ try
     var yamlFile = Path.Combine(Environment.GetEnvironmentVariable("DSH_HOME")!, "cordis.patch.yml");
     Directory.CreateDirectory(Path.GetDirectoryName(yamlFile)!);
     File.WriteAllText(yamlFile, SpecialHarnesses.CopyDeepSeek(old, state));
-    harnesses = new HarnessAccess(client, () => false);
+    harnesses = new HarnessAccess(client, () => false, () => false);
     harnesses.MigrateInstalledCommands();
     foreach (var target in standard)
         Check(JsonNode.DeepEquals(JsonNode.Parse(File.ReadAllText(target.ConfigPath)), JsonNode.Parse(HarnessJson.Copy(target, current, state))),
@@ -128,7 +128,7 @@ try
     var customFile = Environment.GetEnvironmentVariable("OPENCODE_CONFIG")!;
     File.WriteAllText(Path.Combine(global, "opencode.json"), """{"mcp":{"projecthub":{"type":"remote","url":"https://example.test"}}}""");
     File.WriteAllText(customFile, """{"mcp":{"servers":{"projecthub":{}}}}""");
-    StandardHarness DetectOpenCode() => StandardHarnesses.Detect().Single(h => h.Id == "opencode");
+    StandardHarness DetectOpenCode() => StandardHarnesses.Detect(() => false).Single(h => h.Id == "opencode");
     Check(DetectOpenCode().BlockedReason != null, "OpenCode 显式文件与默认文件的同名项");
     File.WriteAllText(customFile, "{}");
     Check(DetectOpenCode().ConfigPath == customFile && DetectOpenCode().BlockedReason != null, "显式文件不改写其他位置的同名项");

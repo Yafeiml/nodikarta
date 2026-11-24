@@ -364,7 +364,7 @@ foreach ($mode in 'none','readOnly','readWrite') {
             if ((ById $access 'HarnessStatus_pi').Current.Name -match '未检测到' -and
                 (Test-Path (Join-Path $testUserHome '.pi/agent/mcp.json'))) { throw '未装 Pi 也写入了配置。' }
             Snapshot 'harnesses'
-            Pass '七个客户端均有独立状态和复制入口，单项接入及批量接入均通过。'
+            Pass '各客户端均有独立状态和复制入口，单项接入及批量接入均通过。'
             Check-DevicePage $access 'Clients'
             Check-DeviceSkills $access $skillRoot
             if ($SkillsTab -and $ScreenshotDirectory) { . (Join-Path $PSScriptRoot 'windows-skills-tab-input.ps1') }
@@ -492,7 +492,7 @@ foreach ($mode in 'none','readOnly','readWrite') {
 }
 if ($EvidenceFile) {
     $result = [ordered]@{ checkedAtUtc=[DateTime]::UtcNow.ToString('o'); fixture=$FixtureDescription;
-        desktopAssemblySha256=(Get-FileHash (Join-Path (Split-Path $exe) 'ProjectHub.Edge.Desktop.dll')).Hash; checks=$checks }
+        desktopImageSha256=(Get-EdgeDesktopImageHash $exe); checks=$checks }
     if ($ScreenshotDirectory) {
         $result.windowDpi = $testedDpi
         $result.captures = @(Get-ChildItem -LiteralPath $ScreenshotDirectory -Filter '*.png' | ForEach-Object {

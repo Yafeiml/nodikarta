@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Win32.SafeHandles;
 
 namespace ProjectHub.Edge;
@@ -11,7 +12,16 @@ internal static class EdgeStatePaths
     private static readonly AsyncLocal<(string Local, string Machine)?> TestFolders = new();
     private static string Local => TestFolders.Value?.Local ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     private static string Machine => TestFolders.Value?.Machine ?? Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-    internal static string LocalDefault => Path.Combine(Local, "Nodicarta", "Edge");
+    internal static string LocalDefault
+    {
+        get
+        {
+            if (!OperatingSystem.IsLinux()) return Path.Combine(Local, "Nodicarta", "Edge");
+            var state = Environment.GetEnvironmentVariable("XDG_STATE_HOME");
+            if (!string.IsNullOrEmpty(state) && Path.IsPathFullyQualified(state)) return Path.Combine(state, "Nodicarta", "Edge");
+            return LinuxState.DefaultDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+        }
+    }
     internal static string MachineDefault => Path.Combine(Machine, "Nodicarta", "Edge");
     internal static string LegacyLocalDefault => Path.Combine(Local, "ProjectHub", "Edge");
     internal static string LegacyMachineDefault => Path.Combine(Machine, "ProjectHub", "Edge");
@@ -38,6 +48,7 @@ internal static class EdgeStatePaths
     // Only the two built-in roots and their exact generated profile children have aliases.
     private static Location? Find(string path)
     {
+        if (!OperatingSystem.IsWindows()) return null; // Only Windows had legacy directories and junctions.
         const string prefix = ".edge-core-";
         string? profile = null;
         var leaf = Path.GetFileName(path);
@@ -65,6 +76,7 @@ internal static class EdgeStatePaths
 
     internal static bool Same(string left, string right)
     {
+        if (!OperatingSystem.IsWindows()) return Path.IsPathFullyQualified(left) && Path.IsPathFullyQualified(right) && Full(left) == Full(right);
         if (string.Equals(left, right, WindowsPath)) return true;
         if (!Path.IsPathFullyQualified(left) || !Path.IsPathFullyQualified(right)) return false;
         try
@@ -95,11 +107,11 @@ internal static class EdgeStatePaths
         Directory.CreateDirectory(parent);
         _ = Ordinary(parent);
         using var migration = LockMigration(parent);
-        Migrate(location);
+        Migrate(location, full);
         return location.Canonical;
     }
 
-    private static void Migrate(Location location)
+    private static void Migrate(Location location, string requested)
     {
         ValidateParents(location);
         var current = Ordinary(location.New);
@@ -122,6 +134,9 @@ internal static class EdgeStatePaths
         }
         _ = Ordinary(location.Old);
         EdgeSession.EnsurePrivateDirectory(location.Old);
+        if (current && pending == null && requested.Equals(location.Canonical, WindowsPath) &&
+            location.New.Equals(LocalDefault, WindowsPath) && WasSelectedDesktopRoot(location))
+            return;
         if (current)
             throw new IOException($"新旧 Edge 状态目录同时存在。请先核对并保留两处数据：{location.Old}；{location.New}");
         // Same-volume rename preserves the complete SQLite WAL, profile history, receipts and protected ACL.
@@ -139,6 +154,29 @@ internal static class EdgeStatePaths
             throw new IOException("无法迁移 Edge 状态目录。请退出使用旧数据的 Edge、智能体连接或服务后重试。", e);
         }
         Publish(location);
+    }
+
+    // A pre-migration client may recreate its old store while the desktop is running.
+    // Only reopen the independently selected new store. Never treat these physical roots as aliases.
+    private static bool WasSelectedDesktopRoot(Location location)
+    {
+        if (!Ordinary(location.Canonical)) return false;
+        var database = new FileInfo(Path.Combine(location.Canonical, "edge.sqlite3"));
+        var record = new FileInfo(Path.Combine(Local, "Nodicarta", "desktop-location.json"));
+        const FileAttributes unsafeFile = FileAttributes.ReparsePoint | FileAttributes.Directory;
+        if (!database.Exists || database.Length == 0 || (database.Attributes & unsafeFile) != 0 ||
+            !record.Exists || (record.Attributes & unsafeFile) != 0 || record.Length is 0 or > 524288) return false;
+        try
+        {
+            using var stream = record.Open(FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+            using var json = JsonDocument.Parse(stream);
+            return json.RootElement.ValueKind == JsonValueKind.Object &&
+                json.RootElement.TryGetProperty("Executable", out var exe) && exe.ValueKind == JsonValueKind.String &&
+                string.Equals(Path.GetFileName(exe.GetString()), "ProjectHub.Edge.Desktop.exe", WindowsPath) &&
+                json.RootElement.TryGetProperty("StateDirectory", out var state) && state.ValueKind == JsonValueKind.String &&
+                location.New.Equals(state.GetString(), WindowsPath);
+        }
+        catch (JsonException) { return false; }
     }
 
     private static void Publish(Location location)

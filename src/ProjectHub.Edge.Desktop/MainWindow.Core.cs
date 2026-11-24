@@ -18,7 +18,7 @@ internal partial class MainWindow
                 if (!await connectionDialog.ShowDialog<bool>(this)) return;
                 pendingAccess = null;
                 DisplayProjects([], [], "");
-                try { await Task.Run(() => new HarnessAccess(client).RestoreAntigravity()); }
+                try { if (OperatingSystem.IsWindows()) await Task.Run(() => new HarnessAccess(client).RestoreAntigravity()); }
                 finally { await LoadAsync(); }
             }
             finally { connectionDialog = null; }

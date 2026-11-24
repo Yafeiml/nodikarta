@@ -10,6 +10,8 @@ public sealed record WorkspaceAccessPolicy(string[]? Tools, Guid? EndpointId);
 
 internal static class WorkspacePath
 {
+    internal static StringComparison Comparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     internal static bool Within(string path, string root, StringComparison comparison) =>
         path.Equals(root, comparison) || path.StartsWith(Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar, comparison);
 
@@ -25,6 +27,13 @@ internal static class WorkspacePath
     // The normalized NT name handles SUBST drives, 8.3 aliases and volume mount aliases consistently.
     internal static string? TryFinal(string path)
     {
+        if (OperatingSystem.IsLinux())
+        {
+            var resolved = realpath(path, IntPtr.Zero);
+            if (resolved == IntPtr.Zero) return null;
+            try { return Marshal.PtrToStringUTF8(resolved); }
+            finally { free(resolved); }
+        }
         using var handle = CreateFileW(path, 0, FileShare.ReadWrite | FileShare.Delete, 0, 3, 0x02000000, 0);
         if (handle.IsInvalid) return null;
         var buffer = new StringBuilder(512);
@@ -39,7 +48,7 @@ internal static class WorkspacePath
 
     internal static bool Overlaps(string other, string path, string canonical)
     {
-        const StringComparison compare = StringComparison.OrdinalIgnoreCase;
+        var compare = Comparison;
         if (Within(other, path, compare) || Within(path, other, compare)) return true;
         return TryFinal(other) is { } final && (Within(final, canonical, compare) || Within(canonical, final, compare));
     }
@@ -48,6 +57,11 @@ internal static class WorkspacePath
     private static extern SafeFileHandle CreateFileW(string name, uint access, FileShare share, nint security, uint disposition, uint flags, nint template);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern uint GetFinalPathNameByHandleW(SafeFileHandle file, StringBuilder name, uint length, uint flags);
+
+    [DllImport("libc", CharSet = CharSet.Ansi)]
+    private static extern nint realpath(string path, nint output);
+    [DllImport("libc")]
+    private static extern void free(nint memory);
 }
 
 public sealed partial class EdgeSession
@@ -95,7 +109,7 @@ public sealed partial class EdgeSession
         cmd.CommandText = "SELECT tools, endpoint FROM workspace_access WHERE workspace_id=(" + cmd.CommandText + ")";
         using var row = cmd.ExecuteReader();
         if (!row.Read()) return null;
-        return new(row.IsDBNull(0) ? null : JsonSerializer.Deserialize<string[]>(row.GetString(0))!,
+        return new(row.IsDBNull(0) ? null : JsonSerializer.Deserialize(row.GetString(0), EdgeJson.Default.StringArray)!,
             row.IsDBNull(1) ? null : Guid.Parse(row.GetString(1)));
     }
 
@@ -111,7 +125,7 @@ public sealed partial class EdgeSession
         cmd.CommandText = "INSERT INTO workspace_access(workspace_id,tools,endpoint) SELECT workspace_id,$tools,$endpoint FROM (" +
             cmd.CommandText + ") WHERE true ON CONFLICT(workspace_id) " +
             (replace ? "DO UPDATE SET tools=excluded.tools, endpoint=excluded.endpoint" : "DO NOTHING");
-        cmd.Parameters.AddWithValue("$tools", policy.Tools == null ? DBNull.Value : JsonSerializer.Serialize(policy.Tools.Distinct(StringComparer.Ordinal)));
+        cmd.Parameters.AddWithValue("$tools", policy.Tools == null ? DBNull.Value : JsonSerializer.Serialize(policy.Tools.Distinct(StringComparer.Ordinal).ToArray(), EdgeJson.Default.StringArray));
         cmd.Parameters.AddWithValue("$endpoint", (object?)policy.EndpointId?.ToString("D") ?? DBNull.Value);
         var saved = cmd.ExecuteNonQuery() == 1;
         if (!saved && (replace || GetWorkspacePolicy(binding) == null))

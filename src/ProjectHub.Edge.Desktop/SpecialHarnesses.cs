@@ -11,16 +11,52 @@ internal static class SpecialHarnesses
     private const string EntryId = "projecthub-edge";
     private const string Plugin = "@deepseek-ai/dsh-mcp-client";
     private const string Conflict = "已有同名 DeepSeek MCP 或自定义条目，请手动核对。";
+    // electron-builder's UUID v5 for the production app ID com.deepseek.dsh.
+    internal const string DeepSeekWindowsProduct = "1bf39983-50d0-5fe0-9ef4-cece76f67c5e";
 
     internal static StandardHarness Pi()
     {
         const string variable = "PI_CODING_AGENT_DIR";
         var directory = ConfigDirectory(variable, Path.Combine(".pi", "agent"));
-        var launcher = HarnessDetection.FindOnPath("pi");
-        return new("pi", "Pi", Path.Combine(directory, "mcp.json"), ["mcpServers"], launcher != null,
-            "在绑定目录启动 Pi 0.99 或更高版本，通过 /mcp 检查 projecthub。")
+        var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var roaming = Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var desktop = File.Exists(Path.Combine(local, "Programs", "pi-desktop", "Pi Desktop.exe")) ||
+            File.Exists(Path.Combine(local, "Programs", "Pi Desktop", "Pi Desktop.exe")) ||
+            WindowsDesktopInstallation.Registered("Pi Desktop.exe", "8482e272-e794-53e8-a4a0-dfb5c42db1ee");
+        var engine = HarnessDetection.FindOnPath("pi") ?? InstalledPiPackage(directory, roaming);
+        return new("pi", "Pi", Path.Combine(directory, "mcp.json"), ["mcpServers"], engine != null || desktop,
+            desktop ? "在 Pi Desktop 选择 Pi 引擎并打开已绑定的目录。" : "在绑定目录启动 Pi 0.99 或更高版本，通过 /mcp 检查 projecthub。")
             { BlockedReason = !Path.IsPathFullyQualified(directory) ? variable + " 需要使用绝对路径。" :
-                launcher != null && LegacyPi(launcher) ? "当前 Pi 版本早于 0.99，请升级后使用内置 MCP。" : null };
+                desktop && engine == null ? "已安装 Pi Desktop，请先安装 Pi 引擎（0.99 或更高版本）。" :
+                engine != null && LegacyPi(engine) ? "当前 Pi 版本早于 0.99，请升级后使用内置 MCP。" : null };
+    }
+
+    private static string? InstalledPiPackage(string directory, string roaming)
+    {
+        static string? PackageAt(string prefix)
+        {
+            var package = Path.Combine(prefix, "node_modules", "@earendil-works", "pi-coding-agent");
+            var manifest = Path.Combine(package, "package.json");
+            return File.Exists(manifest) && (File.Exists(Path.Combine(package, "dist", "bundle", "cli.js")) ||
+                File.Exists(Path.Combine(package, "dist", "cli.js"))) ? manifest : null;
+        }
+        var currentVersion = Path.Combine(directory, "install", "current-version");
+        if (Path.IsPathFullyQualified(directory) && File.Exists(Path.Combine(directory, "bin", "pi.cmd")) && File.Exists(currentVersion))
+        {
+            try
+            {
+                var version = File.ReadAllText(currentVersion).Trim();
+                if (Version.TryParse(version.Split('-', '+')[0], out _) && version.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '+') &&
+                    PackageAt(Path.Combine(directory, "install", "releases", version)) is { } managed) return managed;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        foreach (var prefix in new[] { Environment.GetEnvironmentVariable("npm_config_prefix"), Path.Combine(roaming, "npm") })
+        {
+            if (string.IsNullOrWhiteSpace(prefix) || !Path.IsPathFullyQualified(prefix)) continue;
+            if (File.Exists(Path.Combine(prefix, "pi.cmd")) && PackageAt(prefix) is { } npm) return npm;
+        }
+        return null;
     }
 
     private static bool LegacyPi(string launcher)
@@ -60,9 +96,10 @@ internal static class SpecialHarnesses
     {
         if (HarnessDetection.OnPath("dsh")) return true;
         const string exe = "DeepSeek Harness.exe";
-        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         if (File.Exists(Path.Combine(local, "Programs", "DeepSeek Harness", exe))) return true;
-        // The per-user installer permits choosing another installation directory.
+        if (WindowsDesktopInstallation.Registered(exe, DeepSeekWindowsProduct)) return true;
+        // Older releases may use a different product key and identify their custom location by display name.
         try
         {
             using var apps = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall");

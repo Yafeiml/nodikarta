@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -55,10 +56,10 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
     {
         var tasks = await ReadAsync("tasks", ct);
         var mine = tasks.GetProperty("items").EnumerateArray().Where(t => t.GetProperty("targetEndpointId").GetGuid() == clientEndpoint);
-        return JsonSerializer.SerializeToElement(new { items = mine });
+        return JsonSerializer.SerializeToElement(new JsonObject { ["items"] = JsonSerializer.SerializeToNode(mine.ToArray(), EdgeJson.Default.JsonElementArray) }, EdgeJson.Default.JsonObject);
     }
 
-    public async Task<JsonElement> WriteTaskAsync(Guid taskId, string action, object message, CancellationToken ct)
+    public async Task<JsonElement> WriteTaskAsync(Guid taskId, string action, JsonObject message, CancellationToken ct)
     {
         if (clientEndpoint is null || !(await AssignedAsync(ct)).GetProperty("items").EnumerateArray()
                 .Any(t => t.GetProperty("taskId").GetGuid() == taskId))
@@ -80,11 +81,11 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
         return await RequestAsync(HttpMethod.Get, resource, null, ct);
     }
 
-    public async Task<JsonElement> WriteAsync(string resource, object value, CancellationToken ct)
+    public async Task<JsonElement> WriteAsync(string resource, JsonObject value, CancellationToken ct)
     {
         if (!writable || (await CurrentAsync(ct)).AccessMode != "readWrite")
             throw new InvalidOperationException("当前客户端或设备仅有只读权限。");
-        return await RequestAsync(HttpMethod.Post, resource, JsonSerializer.Serialize(value), ct);
+        return await RequestAsync(HttpMethod.Post, resource, value.ToJsonString(), ct);
     }
 
     private async Task<JsonElement> RequestAsync(HttpMethod method, string resource, string? json, CancellationToken ct)
@@ -95,7 +96,7 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
         {
             try
             {
-                var document = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+                var document = await response.Content.ReadFromJsonAsync(EdgeJson.Web.JsonElement, ct);
                 if (document.ValueKind == JsonValueKind.Object && document.TryGetProperty("error", out var error) &&
                     error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var code) &&
                     code.ValueKind == JsonValueKind.String && code.ValueEquals("observation_confirmation_required"))
@@ -105,7 +106,7 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
         }
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"Core 返回 {(int)response.StatusCode}。", null, response.StatusCode);
-        return await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        return await response.Content.ReadFromJsonAsync(EdgeJson.Web.JsonElement, ct);
     }
 
     private SqliteConnection OpenDrafts()
@@ -143,7 +144,7 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
             {
                 try
                 {
-                    if (JsonSerializer.Deserialize<EdgeRequestSource>(Source) is { } original)
+                    if (JsonSerializer.Deserialize(Source, EdgeJson.Default.EdgeRequestSource) is { } original)
                         return original with { Replay = replay };
                 }
                 catch (JsonException) { /* A damaged optional source must not block the business draft. */ }
@@ -152,12 +153,12 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
         }
     }
 
-    public async Task<JsonElement> SubmitAsync(string resource, Guid request, object value, CancellationToken ct)
+    public async Task<JsonElement> SubmitAsync(string resource, Guid request, JsonObject value, CancellationToken ct)
     {
         if (!writable || request == Guid.Empty || resource is not ("knowledge" or "feedback"))
             throw new InvalidOperationException("需要有效的写权限和请求标识。");
         if (!WorkspaceStillBound()) throw new InvalidOperationException("目录绑定已解除，请重新连接。");
-        var json = JsonSerializer.Serialize(value);
+        var json = value.ToJsonString();
         // Knowledge can include 32 pinned locators plus the body and evidence, up to six JSON characters per UTF-16 unit.
         var maxLength = resource == "knowledge" ? 320 * 1024 : 32 * 1024;
         if (json.Length > maxLength) throw new ArgumentException("提交内容过长。");
@@ -166,7 +167,7 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
         {
             OriginAt = (origin.OriginAt ?? DateTimeOffset.UtcNow).ToUniversalTime(),
             Replay = false
-        }));
+        }, EdgeJson.Default.EdgeRequestSource));
         using var db = OpenDrafts();
         bool replay;
         using (var tx = db.BeginTransaction(deferred: false))
@@ -209,11 +210,11 @@ internal sealed partial class ProjectClient(EdgeSession session, Guid project, G
         }
         catch (HttpRequestException e) when (e.StatusCode is null or HttpStatusCode.TooManyRequests || (int?)e.StatusCode >= 500)
         {
-            return JsonSerializer.SerializeToElement(new { outcome = "queuedLocally", requestId = draft.Request });
+            return JsonSerializer.SerializeToElement(new JsonObject { ["outcome"] = "queuedLocally", ["requestId"] = draft.Request }, EdgeJson.Default.JsonObject);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            return JsonSerializer.SerializeToElement(new { outcome = "queuedLocally", requestId = draft.Request });
+            return JsonSerializer.SerializeToElement(new JsonObject { ["outcome"] = "queuedLocally", ["requestId"] = draft.Request }, EdgeJson.Default.JsonObject);
         }
         catch (Exception e) when (e is InvalidOperationException or HttpRequestException)
         {

@@ -40,12 +40,19 @@ foreach ($layout in 'default','narrow') {
         $image = [Drawing.Bitmap]::new((Join-Path $destination "$name.png"))
         try {
             $x = [int]((ById $access 'ConfigFormatClients').Current.BoundingRectangle.Left-$frame.Left)
-            $markers = switch ($page) {
-                'Clients' { 'codex','claude','antigravity','cursor','opencode','deepseek','pi' | ForEach-Object { "HarnessIcon_$_" } }
+            $markers = @(switch ($page) {
+                'Clients' { Get-HarnessFixtureIds $access | ForEach-Object { "HarnessIcon_$_" } }
                 'Stdio' { 'CopyConfigButton' }
                 'Skills' { 'CheckSkillsButton' }
-            }
-            foreach ($id in $markers) {
+            })
+            for ($i=0; $i -lt $markers.Count; $i++) {
+                $id = $markers[$i]
+                if ($page -eq 'Clients' -and $i -eq 4 -and $markers.Count -gt 7) {
+                    Set-HarnessFixtureScroll $access 100
+                    $image.Dispose()
+                    Save-WindowsTestWindow $main $destination "$name-bottom"
+                    $image = [Drawing.Bitmap]::new((Join-Path $destination "$name-bottom.png"))
+                }
                 $r = (ById $access $id).Current.BoundingRectangle
                 $y = [int]($r.Top+$r.Height/2-$frame.Top)
                 if ($r.Top-$frame.Top -lt 0 -or $r.Bottom-$frame.Top -gt $image.Height) { throw "$layout/$id 未完整显示在截图内。" }
@@ -82,7 +89,10 @@ foreach ($layout in 'default','narrow') {
                     if ($dark -lt 8) { throw "$layout/$id 没有可辨认的深色图形。" }
                 }
             }
-        } finally { $image.Dispose() }
+        } finally {
+            $image.Dispose()
+            if ($page -eq 'Clients') { Set-HarnessFixtureScroll $access 0 }
+        }
         $matches[0].SetFocus()
         $null = Wait-Ui "$layout/$page 返回按钮收到焦点" { $matches[0].Current.HasKeyboardFocus }
         Click $access 'CloseGlobalAccessButton'
@@ -96,5 +106,5 @@ foreach ($layout in 'default','narrow') {
             throw "$layout/$page 点击后窗口为「$($main.Current.Name)」，焦点位置：$current。"
         }
     }
-    Pass "$layout：三个页签的返回按钮及焦点恢复均通过。七个黑白品牌图标所在列表的边线和底色为 $($palette['Clients'])，其余两页为 $($palette['Stdio'])。"
+    Pass "$layout：三个页签的返回按钮及焦点恢复均通过。黑白品牌图标所在列表的边线和底色为 $($palette['Clients'])，其余两页为 $($palette['Stdio'])。"
 }

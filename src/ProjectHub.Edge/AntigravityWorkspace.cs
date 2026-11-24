@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -6,7 +7,6 @@ namespace ProjectHub.Edge;
 
 internal static class AntigravityWorkspace
 {
-    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
     // File order also controls installation: publish the plugin manifest after its server and rule are ready.
     private sealed class Paths(LocalBinding workspace, string state, bool legacy = false)
@@ -20,13 +20,13 @@ internal static class AntigravityWorkspace
             + (legacy ? ".json" : ".nodicarta.json"));
     }
 
-    private sealed record Receipt(bool[] CreatedFolders, string[] Hashes, string[]? Previous = null)
+    internal sealed record Receipt(bool[] CreatedFolders, string[] Hashes, string[]? Previous = null)
     {
         internal bool Owns(int index, string hash) => Hashes[index] == hash || Previous?[index] == hash;
     }
 
     private static Receipt Decode(byte[] bytes) =>
-        JsonSerializer.Deserialize<Receipt>(bytes) is { CreatedFolders.Length: 4, Hashes.Length: 3, Previous: null or { Length: 3 } } receipt
+        JsonSerializer.Deserialize(bytes, EdgeJson.Default.Receipt) is { CreatedFolders.Length: 4, Hashes.Length: 3, Previous: null or { Length: 3 } } receipt
             ? receipt : throw new InvalidDataException("Antigravity 目录接入记录无效。");
 
     private static Receipt? LegacyReceipt(byte[]? bytes)
@@ -61,23 +61,23 @@ internal static class AntigravityWorkspace
         // Desktop namespaces servers by the plugin folder and caches each resulting name across projects.
         var serverKey = $"kb_{workspace.WorkspaceId:N}";
         var serverName = $"{paths.Plugin}_{serverKey}";
-        var manifest = JsonSerializer.SerializeToUtf8Bytes(new {
-            name = paths.Plugin, displayName = "脉络 · Nodicarta", version = "1.0.0",
-            description = "Use the Nodicarta tools authorized for this workspace."
-        }, Indented);
+        var manifest = JsonSerializer.SerializeToUtf8Bytes(new JsonObject {
+            ["name"] = paths.Plugin, ["displayName"] = "脉络 · Nodicarta", ["version"] = "1.0.0",
+            ["description"] = "Use the Nodicarta tools authorized for this workspace."
+        }, EdgeJson.Indented.JsonObject);
         var rule = $"""
             ---
             trigger: always_on
             ---
             The active Nodicarta MCP server for this workspace is `{serverName}`. This name supersedes older workspace server names in retrieval instructions. For questions about earlier project work, design choices, or shared assets, invoke its `search_project_knowledge` tool and follow the evidence for the relevant decision.
             """;
-        var config = JsonSerializer.SerializeToUtf8Bytes(new {
-            mcpServers = new Dictionary<string, object> { [serverKey] = new {
-                command,
-                args = new[] { "mcp-stdio-global", "--state", stateDirectory, "--bound-workspace", workspace.WorkspaceId.ToString("D") },
-                cwd = "${PLUGIN_ROOT}/../../.."
+        var config = JsonSerializer.SerializeToUtf8Bytes(new JsonObject {
+            ["mcpServers"] = new JsonObject { [serverKey] = new JsonObject {
+                ["command"] = command,
+                ["args"] = new JsonArray("mcp-stdio-global", "--state", stateDirectory, "--bound-workspace", workspace.WorkspaceId.ToString("D")),
+                ["cwd"] = "${PLUGIN_ROOT}/../../.."
             } }
-        }, Indented);
+        }, EdgeJson.Indented.JsonObject);
         byte[][] desired = [config, Encoding.UTF8.GetBytes(rule.ReplaceLineEndings("\n") + "\n"), manifest];
         var hashes = desired.Select(Digest).ToArray();
         var previous = new string[files.Length];
@@ -93,10 +93,10 @@ internal static class AntigravityWorkspace
         var final = new Receipt(created, hashes);
         // Store both known digests before replacing anything: an interrupted update can be retried or unbound.
         var pending = previous.SequenceEqual(hashes) ? final : final with { Previous = previous };
-        var pendingBytes = JsonSerializer.SerializeToUtf8Bytes(pending);
+        var pendingBytes = JsonSerializer.SerializeToUtf8Bytes(pending, EdgeJson.Default.Receipt);
         Replace(paths.Receipt, stored, pendingBytes);
         for (int i = 0; i < files.Length; i++) Replace(files[i], original[i], desired[i]);
-        if (pending.Previous != null) Replace(paths.Receipt, pendingBytes, JsonSerializer.SerializeToUtf8Bytes(final));
+        if (pending.Previous != null) Replace(paths.Receipt, pendingBytes, JsonSerializer.SerializeToUtf8Bytes(final, EdgeJson.Default.Receipt));
         // Keep the old working entry until the new plugin is complete. Both receipts are independently retryable.
         if (legacyReceipt != null) RemoveFiles(legacy, legacyBytes!, legacyReceipt, retiringLegacy: true);
     }

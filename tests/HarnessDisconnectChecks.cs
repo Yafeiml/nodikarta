@@ -27,8 +27,8 @@ try
     var command = GlobalCodexAccess.CurrentCommand;
     var client = new EdgeDesktopClient(Path.Combine(root, "state🚀"));
     var state = client.StateDirectory;
-    var access = new HarnessAccess(client, () => true);
-    var all = StandardHarnesses.Detect().Append(SpecialHarnesses.Pi()).ToArray();
+    var access = new HarnessAccess(client, () => true, () => false);
+    var all = StandardHarnesses.Detect(() => false).Append(SpecialHarnesses.Pi()).ToArray();
     foreach (var target in all)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(target.ConfigPath)!);
@@ -161,7 +161,7 @@ try
     Check(access.Inspect().Single(r => r.Id == agy.Id) is { ActionText: "待核对", CanDisconnect: false, CanInstall: false },
         "pending directory cleanup retries automatically without prompting for another disconnect");
     File.WriteAllBytes(guide, managed);
-    new HarnessAccess(new EdgeDesktopClient(state)).RestoreAntigravity();
+    new HarnessAccess(new EdgeDesktopClient(state), detectClaudeDesktopPackage: () => false).RestoreAntigravity();
     Check(!File.Exists(guide) && !dbSession.AntigravityMaintenance().Pending && !dbSession.AntigravityReady(command),
         "restart finishes pending cleanup and keeps maintenance disabled");
     await access.DisconnectAsync(agy.Id, default);

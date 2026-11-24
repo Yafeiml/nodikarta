@@ -154,7 +154,7 @@ try {
     }
     [ordered]@{ checkedAtUtc=[datetime]::UtcNow.ToString('o'); windowsBuild=[Environment]::OSVersion.Version.Build;
         productVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo($exe).ProductVersion;
-        desktopDllSha256=(Get-FileHash -LiteralPath (Join-Path (Split-Path -LiteralPath $exe) 'ProjectHub.Edge.Desktop.dll')).Hash;
+        desktopImageSha256=(Get-EdgeDesktopImageHash $exe);
         localValidation=@('invalid Core URL','empty pairing code'); cases=$results } |
         ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'checks.json') -Encoding utf8
     $results | ForEach-Object { [pscustomobject]$_ } | Format-Table language,layout,windowWidthPx,buttonWidthPx,buttonHeightPx,gapPx,paintedGapPx,rightOffsetPx,openFill,pairFill

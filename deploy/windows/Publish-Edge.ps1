@@ -3,6 +3,7 @@
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts'),
     [switch]$Desktop,
+    [switch]$NativeAot,
     [Version]$Version,
     [uri]$UpdateFeed,
     [string]$PublisherPublicKey,
@@ -16,16 +17,60 @@ $bin = Join-Path $package 'bin'
 $project = if ($Desktop) { 'ProjectHub.Edge.Desktop' } else { 'ProjectHub.Edge' }
 $properties = @()
 if ($Version) { $properties += "-p:Version=$Version" }
+if ($NativeAot) {
+    if (!$Version -or $Version.ToString() -notmatch '^\d+\.\d+\.\d+$') { throw 'Specify a three-part Native AOT release version.' }
+    $properties += '-p:PublishAot=true', '-p:NativeDebugSymbols=false', '-p:DebugType=None', '-p:DebugSymbols=false'
+}
 if ($UpdateFeed -or $PublisherPublicKey -or $TestChannel) {
     if (!$Desktop -or !$Version -or !$UpdateFeed -or !$PublisherPublicKey) { throw 'A desktop release needs a version, feed and verification key together.' }
     $properties += "-p:NodicartaUpdateFeed=$($UpdateFeed.AbsoluteUri)", "-p:NodicartaUpdatePublicKey=$PublisherPublicKey",
         "-p:NodicartaUpdateTestChannel=$($TestChannel.IsPresent.ToString().ToLowerInvariant())", '-p:DebugType=None', '-p:DebugSymbols=false'
 }
-dotnet publish (Join-Path $PSScriptRoot "../../src/$project/$project.csproj") -c Release -r win-x64 --self-contained true -o $bin @properties
-if ($LASTEXITCODE) { throw 'Edge 发布失败。' }
+$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if ($NativeAot) {
+    $work = [IO.Directory]::CreateTempSubdirectory('nodicarta-aot-').FullName
+    [void][IO.Directory]::CreateDirectory($bin)
+    if ($Desktop) {
+        $guiOptions = @()
+        if ($UpdateFeed) {
+            $test = $TestChannel.IsPresent.ToString().ToLowerInvariant()
+            $guiOptions += "-p:Description=Nodicarta/public-v1|$($UpdateFeed.AbsoluteUri)|$PublisherPublicKey|$test"
+        }
+        dotnet publish (Join-Path $repo "src/$project/$project.csproj") -c Release -r win-x64 --self-contained true -o $bin @properties @guiOptions
+        if ($LASTEXITCODE) { throw 'Native AOT desktop publish failed.' }
+    }
+    $native = Join-Path $work 'cli'
+    dotnet publish (Join-Path $repo 'src/ProjectHub.Edge/ProjectHub.Edge.csproj') -c Release -r win-x64 --self-contained true -o $native --artifacts-path (Join-Path $work 'obj') @properties '-p:OutputType=Library' '-p:NativeLib=Shared'
+    if ($LASTEXITCODE) { throw 'Native AOT CLI publish failed.' }
+    foreach ($file in Get-ChildItem -LiteralPath $native -File) {
+        $name = if ($file.Name -ceq 'ProjectHub.Edge.dll') { 'NodicartaEdgeCli.dll' } else { $file.Name }
+        $to = Join-Path $bin $name
+        if (!(Test-Path -LiteralPath $to)) { Copy-Item -LiteralPath $file.FullName -Destination $to }
+        elseif ((Get-FileHash -LiteralPath $to).Hash -ne (Get-FileHash -LiteralPath $file.FullName).Hash) {
+            throw "Desktop and CLI published different native dependencies: $name"
+        }
+    }
+    # The framework reference brings in the IIS hosting module and the legacy
+    # framework-host config. Neither is used by the standalone Native AOT process.
+    foreach ($unused in 'aspnetcorev2_inprocess.dll','ProjectHub.Edge.runtimeconfig.json') {
+        [IO.File]::Delete((Join-Path $bin $unused))
+    }
+    if ((gcc -dumpmachine) -ne 'x86_64-w64-mingw32') { throw 'The native CLI host needs x64 MinGW-w64.' }
+    $hostSources = Join-Path $repo 'src/ProjectHub.Edge.Launcher'
+    $iconDir = Join-Path $repo 'src/ProjectHub.Edge.Desktop/Assets'
+    $resource = Join-Path $work 'cli-resources.o'
+    & windres "-I$iconDir" "-DEDGE_VERSION_NUMBER=$($Version.Major),$($Version.Minor),$($Version.Build),0" ('-DEDGE_VERSION_TEXT=\"' + $Version + '\"') (Join-Path $hostSources 'windows-cli.rc') $resource
+    if ($LASTEXITCODE) { throw 'Native CLI version/icon resource compilation failed.' }
+    & gcc -std=c11 -Os -municode -s -DNODICARTA_PORTABLE_CLI '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'windows.c') $resource -o (Join-Path $bin 'ProjectHub.Edge.exe')
+    if ($LASTEXITCODE) { throw 'Native CLI entry compilation failed.' }
+    & gcc -std=c11 -Os -shared -s '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'compat-hostfxr.c') -o (Join-Path $bin 'hostfxr.dll')
+    if ($LASTEXITCODE) { throw 'Native CLI compatibility library compilation failed.' }
+} else {
+    dotnet publish (Join-Path $repo "src/$project/$project.csproj") -c Release -r win-x64 --self-contained true -o $bin @properties
+    if ($LASTEXITCODE) { throw 'Edge 发布失败。' }
+}
 if ($Desktop) {
     if ($UpdateFeed) {
-        $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
         foreach ($notice in 'LICENSE','THIRD-PARTY-NOTICES.md') { Copy-Item -LiteralPath (Join-Path $repo $notice) -Destination $bin }
         $licenseDir = Join-Path $repo 'release/licenses'
         if (!@(Get-ChildItem -LiteralPath (Join-Path $licenseDir 'edge') -Recurse -File).Count) { throw 'Edge dependency licenses are missing.' }

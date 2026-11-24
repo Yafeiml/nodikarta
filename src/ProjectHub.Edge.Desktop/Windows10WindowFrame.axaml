@@ -1,4 +1,6 @@
 <Style xmlns="https://github.com/avaloniaui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+       x:Class="ProjectHub.Edge.Desktop.Windows10WindowFrame" x:ClassModifier="internal"
        Selector=":is(Window)[WindowState=Normal] Border#Windows10Frame">
   <Setter Property="IsVisible" Value="True"/>
 </Style>

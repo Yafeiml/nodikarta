@@ -1,4 +1,4 @@
-# Inspect the managed PE without loading or executing any assembly from the package.
+# Inspect candidate PE files without loading or executing code from the package.
 function Get-EdgePublicSpki([string]$Path) {
     $file = Get-Item -LiteralPath $Path
     if ($file.Length -gt 4096) { throw 'Expected a single P-256 PUBLIC KEY PEM.' }
@@ -54,8 +54,61 @@ function Get-EdgeEmbeddedRelease([string]$File) {
     } finally { $stream.Dispose() }
 }
 
+function Get-EdgeNativeExports([string]$File) {
+    $stream = [IO.File]::OpenRead($File)
+    try {
+        $pe = [Reflection.PortableExecutable.PEReader]::new($stream)
+        try {
+            if ($pe.HasMetadata -or $pe.PEHeaders.CoffHeader.Machine -ne 'Amd64') { throw "Expected an x64 native PE: $File" }
+            $export = $pe.PEHeaders.PEHeader.ExportTableDirectory
+            if (!$export.Size) { return }
+            $table = $pe.GetSectionData($export.RelativeVirtualAddress).GetReader()
+            $table.Offset = 24
+            $count = $table.ReadUInt32()
+            $table.Offset = 32
+            $names = $pe.GetSectionData($table.ReadInt32()).GetReader()
+            if ($count -gt $names.RemainingBytes / 4) { throw "Invalid export table in $File" }
+            for ($i = 0; $i -lt $count; $i++) {
+                $name = $pe.GetSectionData($names.ReadInt32()).GetReader()
+                $start = $name.Offset
+                while ($name.ReadByte() -ne 0) { }
+                $length = $name.Offset - $start - 1
+                $name.Offset = $start
+                $name.ReadUTF8($length)
+            }
+        } finally { $pe.Dispose() }
+    } finally { $stream.Dispose() }
+}
+
 function Assert-EdgeSetupTrust([string]$Bin, [Version]$Version, [bool]$TestScope) {
-    $embedded = Get-EdgeEmbeddedRelease (Join-Path $Bin 'ProjectHub.Edge.Desktop.dll')
+    $desktop = Join-Path $Bin 'ProjectHub.Edge.Desktop.exe'
+    $managed = Join-Path $Bin 'ProjectHub.Edge.Desktop.dll'
+    $native = @(Get-EdgeNativeExports $desktop) -ccontains 'DotNetRuntimeDebugHeader'
+    if ($native) {
+        foreach ($name in 'ProjectHub.Edge.Desktop.dll','ProjectHub.Edge.dll','coreclr.dll','clrjit.dll') {
+            if (Test-Path -LiteralPath (Join-Path $Bin $name)) { throw "Unexpected managed runtime payload: $name" }
+        }
+        $null = Get-EdgeNativeExports (Join-Path $Bin 'ProjectHub.Edge.exe')
+        $bridge = @(Get-EdgeNativeExports (Join-Path $Bin 'hostfxr.dll'))
+        if ($bridge.Count -ne 1 -or $bridge[0] -cne 'hostfxr_main_startupinfo') {
+            throw 'Expected the Edge launcher compatibility module.'
+        }
+        $cliExports = @(Get-EdgeNativeExports (Join-Path $Bin 'NodicartaEdgeCli.dll'))
+        if ($cliExports -cnotcontains 'DotNetRuntimeDebugHeader' -or $cliExports -cnotcontains 'hostfxr_main_startupinfo') {
+            throw 'The native CLI or its launcher compatibility entry is missing.'
+        }
+        $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($desktop)
+        $fields = $info.Comments -csplit '\|'
+        if ($fields.Count -ne 4 -or $fields[0] -cne 'Nodicarta/public-v1' -or
+            [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $Bin 'ProjectHub.Edge.exe')).ProductVersion -cne $Version.ToString() -or
+            [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $Bin 'NodicartaEdgeCli.dll')).ProductVersion -cne $Version.ToString()) {
+            throw 'Invalid Native AOT release metadata.'
+        }
+        $embedded = @{Version=$info.ProductVersion; NodicartaReleaseLine='public-v1'; NodicartaUpdateFeed=$fields[1];
+            NodicartaUpdatePublicKey=$fields[2]; NodicartaUpdateTestChannel=$fields[3]}
+    } else {
+        $embedded = Get-EdgeEmbeddedRelease $managed
+    }
     $stamp = Get-Content -LiteralPath (Join-Path $Bin 'nodicarta-release.json') -Raw | ConvertFrom-Json -ErrorAction Stop
     $official = Get-EdgePublicSpki (Join-Path $PSScriptRoot '../../release/edge-update-public.pem')
     $spki = [Convert]::FromBase64String($embedded['NodicartaUpdatePublicKey'])
@@ -72,7 +125,7 @@ function Assert-EdgeSetupTrust([string]$Bin, [Version]$Version, [bool]$TestScope
         $stamp.releaseLine -cne 'public-v1' -or $embedded['NodicartaReleaseLine'] -cne 'public-v1' -or
         $stamp.channel -cne 'stable' -or $stamp.rid -cne 'win-x64' -or $stamp.publisherKeyId -cne $hash -or
         (Get-Item -LiteralPath (Join-Path $Bin 'ProjectHub.Edge.Desktop.exe')).VersionInfo.ProductVersion -cne $v) {
-        throw 'Edge release receipt, executable and managed assembly must agree on publisher, platform and version.'
+        throw 'Edge release receipt and executable must agree on publisher, platform and version.'
     }
     if ($TestScope) {
         $feed = [uri]$embedded['NodicartaUpdateFeed']

@@ -1,4 +1,4 @@
-using System.Text.Encodings.Web;
+using System.Text.Json.Nodes;
 using System.Text.Json;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -23,10 +23,17 @@ internal sealed record EdgeAccessConfig(string Command, string[] Arguments, stri
 internal sealed class EdgeAccessSetup(EdgeDesktopClient client)
 {
     private readonly EdgeSession session = client.Session;
-    private static readonly JsonSerializerOptions Json = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping, WriteIndented = true };
     internal static string[] GlobalArguments(string state) => ["mcp-stdio-global", "--state", state];
-    private static string StdioJson(string command, IEnumerable<string> args) =>
-        JsonSerializer.Serialize(new { mcpServers = new { projecthub = new { command, args } } }, Json);
+    internal static string StdioJson(string command, IEnumerable<string> args)
+    {
+        var server = new JsonObject
+        {
+            ["command"] = command,
+            ["args"] = JsonSerializer.SerializeToNode(args.ToArray(), DesktopJson.Default.StringArray)
+        };
+        var servers = new JsonObject { ["projecthub"] = server };
+        return new JsonObject { ["mcpServers"] = servers }.ToJsonString(DesktopJson.Display.Options);
+    }
     internal string GlobalStdioJson() =>
         StdioJson(GlobalCodexAccess.CurrentCommand, GlobalArguments(client.StateDirectory));
 

@@ -167,7 +167,10 @@ if ([IO.File]::Exists($dispatchEntry)) {
         $link = $shell.CreateShortcut($candidate.FullName)
         if ([IO.Path]::GetFileName($link.TargetPath) -ne 'pwsh.exe' -or
             $link.Arguments -notmatch '^-NoProfile -NonInteractive -WindowStyle Hidden -File "([^"]+)" -Action Start -StateDirectory "([^"]+)" -EdgeExe "[^"]+"$') { continue }
-        if ([IO.File]::Exists($Matches[1]) -and [IO.Path]::IsPathFullyQualified($Matches[2])) { $Matches[2] }
+        if ([IO.File]::Exists($Matches[1]) -and [IO.Path]::IsPathFullyQualified($Matches[2])) {
+            $linkedState = Get-EdgeStatePlan $Matches[2]
+            if (!$linkedState.Independent -or $linkedState.Requested -ne $linkedState.Legacy) { $linkedState.Requested }
+        }
     })
     foreach ($dispatchState in $states | Select-Object -Unique) {
         $null = & $dispatchEntry -Action Migrate -StateDirectory $dispatchState -EdgeExe (Join-Path (Split-Path -LiteralPath $exe) 'ProjectHub.Edge.exe')

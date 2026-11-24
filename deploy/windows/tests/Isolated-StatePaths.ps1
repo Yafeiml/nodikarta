@@ -5,7 +5,7 @@ function Invoke-EdgeStateMigration($Cli,$Plan) {
     $type = $dll.GetType('ProjectHub.Edge.EdgeStatePaths',$true)
     $scope = $type.GetMethod('UseKnownFoldersForTest',[Reflection.BindingFlags]'NonPublic,Static').Invoke($null,[string[]]@($testLocal,$testMachine))
     try {
-        $resolved = $type.GetMethod('Resolve',[Reflection.BindingFlags]'NonPublic,Static').Invoke($null,[string[]]@($Plan.Path))
+        $resolved = $type.GetMethod('Resolve',[Reflection.BindingFlags]'NonPublic,Static').Invoke($null,[string[]]@($Plan.Requested))
         if ($resolved -ne $Plan.Path) { throw 'Unexpected state path' }
     } finally { $scope.Dispose() }
 }

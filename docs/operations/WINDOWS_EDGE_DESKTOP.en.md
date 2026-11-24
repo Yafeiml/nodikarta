@@ -2,7 +2,7 @@
 
 ## Install and open Edge
 
-Download `Nodicarta-Edge-1.0.0-win-x64-setup.exe` from the project's GitHub Releases and run it under your Windows account. The setup includes the runtime and defaults to `%LOCALAPPDATA%\Programs\Nodicarta\Edge`. Open **Nodicarta Edge** from Start.
+Download `Nodicarta-Edge-1.1.0-win-x64-setup.exe` from the project's GitHub Releases and run it under your Windows account. The desktop and MCP/CLI use Native AOT. The installer defaults to `%LOCALAPPDATA%\Programs\Nodicarta\Edge`. Open **Nodicarta Edge** from Start.
 
 Open **Settings** to the left of **Language** in the title bar to manage sign-in startup and automatic Edge updates. Sign-in startup is enabled on a new installation and opens only the tray icon. Click the icon to open the window. The installer preserves your selection across upgrades.
 
@@ -28,7 +28,9 @@ To change the Core address, select the double-arrow button beside the Core statu
 
 Open the agent access screen from the overview or tray. Choose an installed client to connect, or use the bulk action. You can also copy the configuration for manual setup. Open a chat from a bound folder and reload the client's MCP connection. The **Skills** tab manages the shared Skills and their updates.
 
-To upgrade, run the new installer against the same installation folder. The seven built-in clients share its fixed `ProjectHub.Edge.exe` entry point. Edge migrates managed settings that reference an older release in that folder. Clients stay connected across subsequent upgrades, and new MCP sessions use the active release. A portable copy launched directly from an extracted ZIP uses the executable in that copy.
+Open Claude Desktop once before connecting it in Edge. After connecting, completely quit and reopen Claude. If Claude Code is also installed, each has its own connection. A Claude Desktop session can access project tools when it supplies a single linked local folder. For Pi Desktop, install the Pi engine (0.99 or later), connect in Edge, then select the Pi engine and open a linked folder in Pi Desktop.
+
+To upgrade, run the new installer against the same installation folder. The built-in clients share its fixed `ProjectHub.Edge.exe` entry point. Edge migrates managed settings that reference an older release in that folder. Clients stay connected across subsequent upgrades, and new MCP sessions use the active release. A portable copy launched directly from an extracted ZIP uses the executable in that copy.
 
 Windows runs one resident Edge desktop at a time. Opening it again brings up the existing window. Opening it from a new location takes over the current user's session and updates that device's managed client connections automatically. Edge preserves custom settings, registrations with a different data folder, and registrations it cannot verify.
 

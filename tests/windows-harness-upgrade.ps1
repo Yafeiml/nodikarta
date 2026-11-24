@@ -70,9 +70,17 @@ function Wait-Connected($view, [switch]$LegacyButton) {
 function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
     $bmp = [Drawing.Bitmap]::FromFile($imagePath)
     try {
-        $previousY = $null
-        $silhouettes = [Collections.Generic.HashSet[string]]::new()
-        foreach ($id in 'codex','claude','antigravity','cursor','opencode','deepseek','pi') {
+        $ids = @(Get-HarnessFixtureIds $view)
+        $silhouettes = @{}
+        for ($i=0; $i -lt $ids.Count; $i++) {
+            $id = $ids[$i]
+            if ($i -eq 4 -and $ids.Count -gt 7) {
+                Set-HarnessFixtureScroll $view 100
+                $stem = [IO.Path]::GetFileNameWithoutExtension($imagePath) + '-bottom'
+                Save-WindowsTestWindow (MainWindow) $ScreenshotDirectory $stem
+                $bmp.Dispose()
+                $bmp = [Drawing.Bitmap]::FromFile((Join-Path $ScreenshotDirectory "$stem.png"))
+            }
             $icon = (ById $view "HarnessIcon_$id").Current.BoundingRectangle
             $copy = (ById $view "HarnessCopy_$id").Current.BoundingRectangle
             $x = $icon.Left + $icon.Width/2 - $frame.Left
@@ -86,7 +94,12 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
                     if ([Math]::Min($color.R,[Math]::Min($color.G,$color.B)) -lt 160) { $iy*[int]$icon.Width+$ix }
                 }
             }
-            if (@($ink).Count -lt 12*$scale*$scale -or !$silhouettes.Add(($ink -join ','))) { throw "$id 图标没有绘制，或错误地复用了另一行的图形。" }
+            $signature = $ink -join ','
+            $brand = if ($id -eq 'claude-desktop') { 'claude' } else { $id }
+            if (@($ink).Count -lt 12*$scale*$scale -or ($silhouettes.ContainsKey($signature) -and $silhouettes[$signature] -ne $brand)) {
+                throw "$id 图标没有绘制，或错误地复用了另一个品牌的图形。"
+            }
+            $silhouettes[$signature] = $brand
             # Sample both sides of the logo, then the empty rounded corner and the adjacent card.
             foreach ($offset in -15,15) {
                 if ($bmp.GetPixel([int]($x+$offset*$scale),[int]$y).Name -ne 'fffafafa') { throw "$id 图标浅灰底板未正确显示。" }
@@ -118,7 +131,9 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
                     }
                 }
             }
-            if ($null -ne $previousY) {
+            if ($i -gt 0) {
+                $previousIcon = (ById $view "HarnessIcon_$($ids[$i-1])").Current.BoundingRectangle
+                $previousY = $previousIcon.Top+$previousIcon.Height/2-$frame.Top
                 $mid = [int][Math]::Floor(($previousY+$y)/2)
                 $left = [int]($x-31*$scale)
                 $right = [int]($copy.Right-$frame.Left+13*$scale)
@@ -128,15 +143,22 @@ function Check-ListSurface($view, $frame, [double]$scale, [string]$imagePath) {
                 })
                 if ($line.Count -lt 1 -or $line.Count -gt [Math]::Ceiling($scale)) { throw "$id 上方应有一条延伸至行两侧的 1 DIP 细分隔线。" }
             }
-            $previousY = $y
         }
-    } finally { $bmp.Dispose() }
+    } finally { $bmp.Dispose(); Set-HarnessFixtureScroll $view 0 }
 }
 
 function Check-RowLayout($view, [string]$language) {
-    $expected = [ordered]@{codex='Codex';claude='Claude';antigravity='Antigravity';cursor='Cursor';opencode='OpenCode';deepseek='DeepSeek';pi='Pi'}
+    $expected = @{codex='Codex';claude='Claude';antigravity='Antigravity';cursor='Cursor';opencode='OpenCode';deepseek='DeepSeek';pi='Pi'}
+    $ids = @(Get-HarnessFixtureIds $view)
+    if ($ids -contains 'claude-desktop') {
+        $expected['claude-desktop'] = if ($language -eq 'en') { 'Claude Desktop' } else { 'Claude 桌面版' }
+        $expected['claude'] = 'Claude Code'
+    }
     $list = ById $view 'HarnessRows'
-    foreach ($id in $expected.Keys) {
+    Set-HarnessFixtureScroll $view 0
+    for ($i=0; $i -lt $ids.Count; $i++) {
+        $id = $ids[$i]
+        if ($i -eq 4) { Set-HarnessFixtureScroll $view 100 }
         $label = $list.FindFirst([Windows.Automation.TreeScope]::Descendants,
             [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::NameProperty,$expected[$id]))
         $button = (ById $view "HarnessInstall_$id").Current.BoundingRectangle
@@ -146,7 +168,8 @@ function Check-RowLayout($view, [string]$language) {
             throw "$language 的 $id 行未显示标题 $($expected[$id])。"
         }
     }
-    Pass "$language 七项客户端标题按行核对通过：$($expected.Values -join '、')。"
+    Set-HarnessFixtureScroll $view 0
+    Pass "$language 客户端标题按行核对通过：$($expected[$ids] -join '、')。"
     if (!$ScreenshotDirectory) { return }
     $window = MainWindow
     $handle = [intptr]$window.Current.NativeWindowHandle
@@ -316,7 +339,7 @@ try {
     if ((ById $access 'HarnessInstall_claude').Current.Name -cne 'Disconnect Claude Code' -or
         (ById $access 'HarnessStatus_claude').Current.Name -notlike 'Connected*') { throw 'Invalid English row labels' }
     Check-RowLayout $access 'en'
-    if ($ScreenshotDirectory) { Pass '中英文在默认和窄窗口共四次实测，七行均为 52 DIP，24 DIP 图标居于浅灰圆角底板内。六条 1 DIP 中性灰分隔线贯穿列表，主操作和复制列对齐，间距 8 DIP。' }
+    if ($ScreenshotDirectory) { Pass '中英文在默认和窄窗口共四次实测，各行均为 52 DIP，24 DIP 图标居于浅灰圆角底板内。1 DIP 中性灰分隔线贯穿列表，主操作和复制列对齐，间距 8 DIP。' }
     Pass '断开确认默认焦点为取消。取消保留原配置；确认只断开 Codex，重启后仍然断开，其他六项与五项通用 Skills 保留。'
     Stop-FixtureWindow
     $app = $null

@@ -4,8 +4,8 @@ using Microsoft.Win32.SafeHandles;
 
 namespace ProjectHub.Edge;
 
-// Pin each Windows directory while opening the file so a concurrent rename or junction cannot redirect the transfer.
-internal sealed class AssetWorkspace : IDisposable
+// Keep directory handles throughout a transfer so replacing a pathname cannot redirect file access.
+internal sealed partial class AssetWorkspace : IDisposable
 {
     private readonly List<SafeFileHandle> directories = [];
     internal string FilePath { get; }
@@ -27,6 +27,12 @@ internal sealed class AssetWorkspace : IDisposable
                 throw new ArgumentException("素材路径包含不支持的目录名、文件名或路径跳转。");
         }
         RelativePath = string.Join('/', segments);
+        if (OperatingSystem.IsLinux())
+        {
+            try { FilePath = PinLinuxParent(root, segments, createParents); }
+            catch { Dispose(); throw; }
+            return;
+        }
         FilePath = Path.Join(root, Path.Combine(segments));
         var current = Path.GetPathRoot(root) ?? throw new ArgumentException("绑定目录无效。");
         try
@@ -58,6 +64,7 @@ internal sealed class AssetWorkspace : IDisposable
 
     internal FileStream OpenSource()
     {
+        if (OperatingSystem.IsLinux()) return OpenLinuxSource();
         var handle = OpenExisting(FilePath, directory: false);
         try
         {

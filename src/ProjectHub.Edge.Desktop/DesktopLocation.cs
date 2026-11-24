@@ -21,16 +21,10 @@ internal static class DesktopLocation
 
     private static bool Same(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
 
-    internal static T WithShortcut<T>(string path, Func<dynamic, T> readOrWrite)
+    internal static T WithShortcut<T>(string path, Func<WindowsShellLink, T> readOrWrite)
     {
-        dynamic shell = Activator.CreateInstance(Type.GetTypeFromProgID("WScript.Shell", throwOnError: true)!)!;
-        try
-        {
-            dynamic link = shell.CreateShortcut(path);
-            try { return readOrWrite(link); }
-            finally { Marshal.FinalReleaseComObject((object)link); }
-        }
-        finally { Marshal.FinalReleaseComObject((object)shell); }
+        using var link = new WindowsShellLink(path);
+        return readOrWrite(link);
     }
 
     internal static void Retarget(string path, string previous, string current)
@@ -46,7 +40,7 @@ internal static class DesktopLocation
                 if (!Same((string)link.TargetPath, previous)) return false;
                 link.TargetPath = current;
                 if (Same((string)link.WorkingDirectory, Path.GetDirectoryName(previous)!))
-                    link.WorkingDirectory = Path.GetDirectoryName(current);
+                    link.WorkingDirectory = Path.GetDirectoryName(current)!;
                 string icon = link.IconLocation;
                 if (icon.StartsWith(previous + ",", StringComparison.OrdinalIgnoreCase))
                     link.IconLocation = current + icon[previous.Length..];

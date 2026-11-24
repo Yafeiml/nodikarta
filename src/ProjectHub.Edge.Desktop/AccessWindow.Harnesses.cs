@@ -5,11 +5,12 @@ using Avalonia.Media;
 
 namespace ProjectHub.Edge.Desktop;
 
-internal sealed record HarnessListItem(HarnessRow Client, IImage Icon) : LocalizedRow
+internal sealed record HarnessListItem(HarnessRow Client, IImage Icon, bool HasClaudeDesktop) : LocalizedRow
 {
     public string DisplayName => Client.Id switch
     {
-        "claude" => "Claude",
+        "claude" when !HasClaudeDesktop => "Claude",
+        "claude-desktop" => UiLanguage.Text("Claude 桌面版", "Claude Desktop"),
         "antigravity" => "Antigravity",
         "deepseek" => "DeepSeek",
         _ => Client.Name
@@ -74,7 +75,11 @@ internal partial class AccessWindow
         }
         if (ct.IsCancellationRequested || version != harnessRefreshVersion) return;
         if (!HarnessRows.Items.Cast<HarnessListItem>().Select(item => item.Client).SequenceEqual(rows))
-            HarnessRows.ItemsSource = rows.Select(row => new HarnessListItem(row, (IImage)Resources[row.Id]!)).ToArray();
+        {
+            var hasClaudeDesktop = rows.Any(row => row.Id == "claude-desktop");
+            HarnessRows.ItemsSource = rows.Select(row => new HarnessListItem(row,
+                (IImage)Resources[row.Id == "claude-desktop" ? "claude" : row.Id]!, hasClaudeDesktop)).ToArray();
+        }
         hasInstallableClients = rows.Any(row => row.CanBatchInstall);
         if (silent) InstallDetectedButton.IsEnabled = hasInstallableClients;
     }

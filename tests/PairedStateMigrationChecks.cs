@@ -68,7 +68,7 @@ try
     var identity = await previous.PairAsync(address, pairing + "." + pairCode, "原设备", replace: false, ct);
     var binding = await previous.BindAsync(project, workspace, ct);
     var first = new ProjectClient(previous, project, grant, true, workspace: binding.WorkspaceId);
-    var queued = await first.SubmitAsync("knowledge", request, submission, ct);
+    var queued = await first.SubmitAsync("knowledge", request, JsonSerializer.SerializeToNode(submission)!.AsObject(), ct);
     Check(identity.DeviceId == device && identity.EdgeId == edge && queued.GetProperty("outcome").GetString() == "queuedLocally" &&
         previous.ReadPairingInventory(device) == (1, 1) && attempts == 1 && accepted == 0, "old paired device holds one unsent draft");
     var encrypted = Ciphertext(previous);
@@ -85,6 +85,19 @@ try
     Check(linked == binding && migrated.MatchWorkspace(workspace)?.WorkspaceId == binding.WorkspaceId && redeemed == 1,
         "original device credential authenticates, and the original workspace and grant resolve");
     Check(migrated.ReadPairingInventory(device) == (1, 1), "draft survived migration before any replay");
+    // A much older client can later recreate its own directory while the current desktop is running.
+    Directory.Delete(old); // Verified above as the fixture's junction.
+    EdgeSession.EnsurePrivateDirectory(old);
+    using var lease = File.Open(Path.Combine(old, "mcp-live.fixture.lease"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+    File.WriteAllText(Path.Combine(local, "Nodicarta", "desktop-location.json"), JsonSerializer.Serialize(new {
+        Executable = Path.Combine(tmp.FullName, "ProjectHub.Edge.Desktop.exe"), StateDirectory = current
+    }));
+    migrated = EdgeSession.Open(current);
+    Check(migrated.GetIdentity() == identity && migrated.MatchWorkspace(workspace)?.WorkspaceId == binding.WorkspaceId &&
+        migrated.ReadPairingInventory(device) == (1, 1), "explicit recorded store kept its device, folder and unsent draft");
+    try { EdgeSession.Open(old); throw new Exception("Stale MCP was redirected to the paired desktop."); } catch (IOException) { }
+    Check(!EdgeStatePaths.Same(old, current) && new DirectoryInfo(old).LinkTarget == null &&
+        !File.Exists(Path.Combine(old, "edge.sqlite3")), "independent old store and live lease untouched");
     Volatile.Write(ref online, 1);
     var second = new ProjectClient(migrated, project, grant, true, workspace: binding.WorkspaceId);
     await second.SyncAsync(ct);

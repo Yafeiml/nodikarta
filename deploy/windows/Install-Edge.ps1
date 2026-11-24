@@ -37,6 +37,10 @@ if ($existing -and !$PSBoundParameters.ContainsKey('StateDirectory')) {
     $requestedState = $Matches[1]
 }
 $statePlan = Get-EdgeStatePlan ($requestedState ? $requestedState : (Join-Path (Get-EdgeKnownFolder CommonApplicationData) 'Nodicarta/Edge'))
+if ($existing -and $statePlan.Independent -and $existing.PathName -match ' --state "([^"]+)"$' -and
+    [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath($Matches[1])) -ne $statePlan.Requested) {
+    throw '已有服务使用独立的数据目录，请先核对服务注册。'
+}
 $state = $statePlan.Path
 $serviceCommand = '"{0}" service --state "{1}"' -f $executable, $state
 if (!(Test-Path -LiteralPath $releaseDirectory)) {

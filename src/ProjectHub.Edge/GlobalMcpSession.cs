@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Net;
@@ -44,7 +45,7 @@ internal sealed class GlobalMcpSession
             }
             if (workspace != null)
                 workspaceRelativeDirectory = Path.GetRelativePath(WorkspacePath.Verified(workspace.LocalPath),
-                    WorkspacePath.Verified(cwd)).Replace('\\', '/');
+                    WorkspacePath.Verified(cwd)).Replace(Path.DirectorySeparatorChar, '/');
         }
         catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
         { initialError = "当前目录无法唯一匹配，请在 Edge 核对目录绑定。"; }
@@ -91,6 +92,10 @@ internal sealed class GlobalMcpSession
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !uri.IsFile || uri.IsUnc ||
             uri.Host.Length != 0 || uri.Query.Length != 0 || uri.Fragment.Length != 0) return null;
         var path = uri.LocalPath;
+        if (OperatingSystem.IsLinux())
+            return value.StartsWith("file://", StringComparison.OrdinalIgnoreCase) && path.StartsWith('/') &&
+                !path.StartsWith("//", StringComparison.Ordinal) && !path.Contains('\0')
+                ? Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)) : null;
         // Antigravity Desktop escapes the drive colon in file:///d%3A/…, which .NET reads as /d:/….
         if (path.Length >= 4 && path[0] == '/' &&
             value.StartsWith($"file:///{path[1]}%3A/", StringComparison.OrdinalIgnoreCase))
@@ -123,7 +128,7 @@ internal sealed class GlobalMcpSession
             {
                 var directory = LocalRootDirectory(root.Uri);
                 if (directory == null)
-                    return new(null, "客户端提供的工作目录地址不受支持。请打开本机盘符下已绑定的文件夹。");
+                    return new(null, "客户端提供的工作目录地址不受支持。请打开本机已绑定的文件夹。");
                 if (selected != null && !string.Equals(selected, directory, StringComparison.Ordinal))
                     return new(null, "客户端提供了多个不同的工作目录。请只打开要使用的文件夹后重新连接。");
                 selected = directory;
@@ -176,7 +181,7 @@ internal sealed class GlobalMcpSession
                     options.Capabilities = new() { Tools = new() { ListChanged = true } };
                 }
             }).WithStdioServerTransport()
-            .WithTools<ProjectTools>().WithTools<GlobalDiagnostics>().WithRequestFilters(filters =>
+            .WithTools<ProjectTools>(McpHost.ToolOptions).WithTools<GlobalDiagnostics>(McpHost.ToolOptions).WithRequestFilters(filters =>
             {
                 filters.AddListToolsFilter(next => async (request, token) =>
                 {
@@ -224,6 +229,7 @@ internal sealed class GlobalMcpSession
     // Cursor CLI's bundled Node launches the server directly. Its editor uses the same MCP client name.
     private static bool IsCursorCliParent()
     {
+        if (!OperatingSystem.IsWindows()) return false;
         try
         {
             using var self = Process.GetCurrentProcess();
@@ -260,5 +266,5 @@ internal sealed class GlobalToolCall
 internal sealed class GlobalDiagnostics
 {
     [McpServerTool(Name = GlobalMcpSession.DiagnosticTool, ReadOnly = true), Description("查看当前聊天工作目录的 ProjectHub 接入状态。")]
-    public static object Status(GlobalToolCall call) => new { status = call.Access!.Status, message = call.Access.Message };
+    public static object Status(GlobalToolCall call) => new JsonObject { ["status"] = call.Access!.Status, ["message"] = call.Access.Message };
 }

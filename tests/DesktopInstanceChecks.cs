@@ -79,8 +79,11 @@ try
         var inheritedAlias = string.Equals(ProjectHub.Edge.EdgeStatePaths.Normalize(inheritedState),
             ProjectHub.Edge.EdgeStatePaths.LocalDefault, StringComparison.OrdinalIgnoreCase)
             ? ProjectHub.Edge.EdgeStatePaths.LegacyLocalDefault : inheritedState;
-        Environment.SetEnvironmentVariable("PROJECTHUB_EDGE_STATE", inheritedAlias + Path.DirectorySeparatorChar);
-        if (defaultState() != originalState) throw new Exception("An inherited state alias displaced the remembered state");
+        string requested = inheritedAlias + Path.DirectorySeparatorChar;
+        Environment.SetEnvironmentVariable("PROJECTHUB_EDGE_STATE", requested);
+        var expected = ProjectHub.Edge.EdgeStatePaths.Same(inheritedAlias, Path.TrimEndingDirectorySeparator(inheritedState))
+            ? originalState : requested;
+        if (defaultState() != expected) throw new Exception("A process state override was confused with a different physical root");
     }
     var processState = Path.Combine(directory.FullName, "explicit process override");
     Environment.SetEnvironmentVariable("NODICARTA_EDGE_STATE", processState);
@@ -133,6 +136,24 @@ try
     ReleaseLinks.Write(installLinks.Paths[0], a, ReleaseLinks.StateArguments(Path.Combine(directory.FullName, "other state")));
     try { _ = new ReleaseLinks(directory.FullName); throw new Exception("Conflicting shortcut data was silently selected."); }
     catch (IOException) { }
+    var fixtureLocal = Path.Combine(directory.FullName, "separate local");
+    using (ProjectHub.Edge.EdgeStatePaths.UseKnownFoldersForTest(fixtureLocal, Path.Combine(directory.FullName, "machine")))
+    {
+        string oldState = ProjectHub.Edge.EdgeStatePaths.LegacyLocalDefault;
+        string newState = ProjectHub.Edge.EdgeStatePaths.LocalDefault;
+        Directory.CreateDirectory(oldState);
+        Directory.CreateDirectory(newState);
+        ReleaseLinks.Write(installLinks.Paths[0], a, "");
+        foreach (string requested in new[] { oldState, newState })
+        {
+            ReleaseLinks.Write(installLinks.Paths[1], a, "--background " + ReleaseLinks.StateArguments(requested));
+            if (new ReleaseLinks(directory.FullName).ExistingState != requested)
+                throw new Exception("Installer did not retain the explicitly selected physical root.");
+        }
+        ReleaseLinks.Write(installLinks.Paths[0], a, ReleaseLinks.StateArguments(oldState));
+        try { _ = new ReleaseLinks(directory.FullName); throw new Exception("Independent old and new roots were treated as aliases."); }
+        catch (IOException) { }
+    }
     Console.WriteLine("PASS: machine-wide lease, repeated launch, stale login start, graceful move, custom state, persisted location, managed shortcuts.");
     return 0;
 }

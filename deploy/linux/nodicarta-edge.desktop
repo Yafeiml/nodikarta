@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Nodicarta Edge
+Name[zh_CN]=脉络 Edge
+Comment=Connect this device and its projects to Nodicarta Core
+Comment[zh_CN]=将本机和项目目录连接到脉络 Core
+Exec=/opt/nodicarta-edge/ProjectHub.Edge.Desktop
+Icon=nodicarta-edge
+Terminal=false
+Categories=Development;

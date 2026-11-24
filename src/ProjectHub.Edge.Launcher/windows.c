@@ -25,6 +25,11 @@ int wmain(int argc, wchar_t **argv)
         return fail(L"Invalid installation path.");
     file[1] = L'\0';
 
+#ifdef NODICARTA_PORTABLE_CLI
+    // The versioned CLI directly hosts the same AOT library as the installed launcher.
+    wcscpy(bin, root);
+    bin[wcslen(bin) - 1] = L'\0';
+#else
     swprintf(path, ARRAYSIZE(path), L"%lsactive-release", root);
     HANDLE marker = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
                                 NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -44,6 +49,7 @@ int wmain(int argc, wchar_t **argv)
         build[i] = (wchar_t)c;
     }
     swprintf(bin, ARRAYSIZE(bin), L"%ls%ls\\bin", root, build);
+#endif
     swprintf(path, ARRAYSIZE(path), L"%ls\\hostfxr.dll", bin);
     HMODULE fxr = LoadLibraryExW(path, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32);
     if (!fxr)

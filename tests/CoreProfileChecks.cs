@@ -2,6 +2,7 @@
 #:property AssemblyName=ProjectHub.Edge.AccessChecks
 #:property PublishAot=false
 #:project ../src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj
+using System.Text.Json.Nodes;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -99,7 +100,7 @@ try
         Name = "A-session", Command = cli, Arguments = ["mcp-stdio-global", "--state", root], WorkingDirectory = directory });
     await using var oldMcp = await McpClient.CreateAsync(transport, cancellationToken: ct);
     Check((await oldMcp.ListToolsAsync(cancellationToken: ct)).Select(t => t.Name).SequenceEqual(["list_projects"]), "live MCP starts on A");
-    var draft = await oldClient.SubmitAsync("knowledge", Guid.NewGuid(), new { text = "private A" }, ct);
+    var draft = await oldClient.SubmitAsync("knowledge", Guid.NewGuid(), new JsonObject { ["text"] = "private A" }, ct);
     Check(draft.GetProperty("outcome").GetString() == "queuedLocally", "first profile queued a real submission");
     Check(old.ReadPairingInventory(initial.DeviceId) == (1, 1), "switch dialog counts the old binding and unsent draft");
     // Seed an earlier installation's chat route and terminal delivery receipt without launching a real chat.

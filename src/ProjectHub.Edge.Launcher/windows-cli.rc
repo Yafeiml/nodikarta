@@ -1,0 +1,26 @@
+#include <winver.h>
+
+1 ICON "edge.ico"
+1 VERSIONINFO
+ FILEVERSION EDGE_VERSION_NUMBER
+ PRODUCTVERSION EDGE_VERSION_NUMBER
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904b0"
+  BEGIN
+   VALUE "CompanyName", "Nodicarta"
+   VALUE "FileDescription", "Nodicarta Edge CLI"
+   VALUE "FileVersion", EDGE_VERSION_TEXT
+   VALUE "OriginalFilename", "ProjectHub.Edge.exe"
+   VALUE "ProductName", "Nodicarta Edge"
+   VALUE "ProductVersion", EDGE_VERSION_TEXT
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0409, 1200
+ END
+END

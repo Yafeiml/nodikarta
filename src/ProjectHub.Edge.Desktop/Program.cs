@@ -29,13 +29,17 @@ internal static class Program
         var inherited = Environment.GetEnvironmentVariable(variable, EnvironmentVariableTarget.User) ??
             Environment.GetEnvironmentVariable(variable, EnvironmentVariableTarget.Machine);
         if (inherited == null) return current;
-        return string.Equals(EdgeStatePaths.Normalize(current), EdgeStatePaths.Normalize(inherited),
-            StringComparison.OrdinalIgnoreCase) ? null : current;
+        return EdgeStatePaths.Same(Path.TrimEndingDirectorySeparator(current), Path.TrimEndingDirectorySeparator(inherited))
+            ? null : current;
     }
 
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args is ["--version"]) { Console.WriteLine(ReleaseVersion); return 0; }
+#if LINUX_DESKTOP
+        return LinuxDesktop.Run(args);
+#else
         if (ReleaseInstallation.TryRun(args, out var installCode)) return installCode;
         var codexAction = args.FirstOrDefault() is "--connect-codex" or "--disconnect-codex";
         var refreshRegistration = args.FirstOrDefault() is "--refresh-codex-registration" or "--refresh-harness-registration";
@@ -113,6 +117,7 @@ internal static class Program
                 MessageBoxW(0, UiLanguage.Text("无法启动脉络 Edge。", "Could not start Nodicarta Edge.") + "\n" + UiLanguage.Message(error.Message), UiLanguage.Product, 0x10);
             return 1;
         }
+#endif
     }
 
     internal static string ResolveDesktopDirectory(string requested)

@@ -36,7 +36,7 @@ internal static class WindowsManualCodex
             AppBuilder.Configure<App>().UseWin32().With(new Win32PlatformOptions { RenderingMode = [Win32RenderingMode.Software] })
                 .UseSkia().SetupWithoutStarting();
             var client = new EdgeDesktopClient(Path.Combine(scratch.FullName, "state"));
-            var harness = new HarnessAccess(client, () => false);
+            var harness = new HarnessAccess(client, () => false, () => false);
             var file = Path.Combine(home, "CODEX_HOME", "config.toml");
             var window = new Window { Width = 690, Height = 600, ShowActivated = false, ShowInTaskbar = false,
                 WindowStartupLocation = WindowStartupLocation.Manual, Position = new PixelPoint(-20000, -20000) };

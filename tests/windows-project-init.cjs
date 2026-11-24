@@ -5,7 +5,7 @@ const {createHash, randomUUID} = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {lines, runExe, handshake, tool} = require('./windows-mcp.cjs');
+const {lines, runExe, handshake, tool, binaryHashes} = require('./windows-mcp.cjs');
 
 async function main() {
     const [cliArg, stateArg, writeId, readId, container, evidence] = process.argv.slice(2);
@@ -128,7 +128,7 @@ async function main() {
         }
         record('只读目录可盘点、自身搜索不含另一项目的记录，两类写入均被拒绝；未绑定目录只有诊断，直接请求快照也被拒绝');
         fs.writeFileSync(evidence,JSON.stringify({checkedAtUtc:new Date().toISOString(),mode:'按 Skill 步骤构造的真实 MCP 回归，未启动模型回合',coreImage,
-            edge:sha(fs.readFileSync(path.join(path.dirname(cli),'ProjectHub.Edge.dll'))),skillsVersion:fs.readFileSync(path.join(skills,'VERSION'),'utf8').trim(),
+            edgeBinaries:binaryHashes(cli),skillsVersion:fs.readFileSync(path.join(skills,'VERSION'),'utf8').trim(),
             checks,knowledgeVersions:[summary.version,updated.version],assetVersions:[original.version,changed.version]},null,2)+'\n');
     } finally {
         for (const client of clients) client.close();

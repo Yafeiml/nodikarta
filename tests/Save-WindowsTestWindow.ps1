@@ -1,3 +1,9 @@
+function Get-EdgeDesktopImageHash([string]$Executable) {
+    $assembly = [IO.Path]::ChangeExtension($Executable, '.dll')
+    $image = if ([IO.File]::Exists($assembly)) { $assembly } else { $Executable }
+    return (Get-FileHash -LiteralPath $image).Hash
+}
+
 function Save-WindowsTestWindow($window, [string]$EvidenceDirectory, [string]$name) {
     if (!$EvidenceDirectory) { return }
     $null = [IO.Directory]::CreateDirectory($EvidenceDirectory)

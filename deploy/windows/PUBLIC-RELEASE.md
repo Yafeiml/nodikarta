@@ -1,28 +1,30 @@
 # Windows release
 
-Nodicarta Edge ships a per-user, self-contained Windows x64 installer. Building it uses PowerShell 7, the .NET 10 SDK, x64 MinGW-w64 GCC and NSIS 3 with Unicode support. End users run the setup executable.
+Nodicarta Edge ships a per-user Windows x64 installer containing the Native AOT desktop and MCP/CLI. Building it uses PowerShell 7, the .NET 10 SDK, Visual Studio with the Desktop development with C++ workload and Windows SDK, x64 MinGW-w64 GCC and windres, and NSIS 3 with Unicode support. End users run the setup executable.
 
 ## Build and sign
 
 Run the following command on the release workstation. It publishes the desktop and MCP/CLI together, includes the licenses, builds the installer and signs its update manifest. Artifacts are written under `artifacts/edge-public/stable/<version>`.
 
 ```powershell
-.\deploy\windows\Publish-EdgePublic.ps1 -Version 1.0.0
+.\deploy\windows\Publish-EdgePublic.ps1 -Version 1.1.0
 ```
 
 The public verification key is `release/edge-update-public.pem`. The corresponding signing key is opened by name from the current user's Windows CNG Software Key Storage Provider. To re-sign an approved, unchanged installer, run:
 
 ```powershell
-.\deploy\windows\Sign-EdgeRelease.ps1 -Installer .\artifacts\edge-public\stable\1.0.0\Nodicarta-Edge-1.0.0-win-x64-setup.exe -Version 1.0.0
+.\deploy\windows\Sign-EdgeRelease.ps1 -Installer .\artifacts\edge-public\stable\1.1.0\Nodicarta-Edge-1.1.0-win-x64-setup.exe -Version 1.1.0
 ```
 
-The maintainer publishes these three files on the stable GitHub Release tagged `v1.0.0`:
+The maintainer publishes these three files on the stable GitHub Release tagged `v1.1.0`:
 
-* `Nodicarta-Edge-1.0.0-win-x64-setup.exe`
+* `Nodicarta-Edge-1.1.0-win-x64-setup.exe`
 * `nodicarta-edge-stable-win-x64.json`
 * `nodicarta-edge-stable-win-x64.json.sig`
 
 Stage the complete set before making the release latest. Keep each versioned installer available at its original URL. Every release designated latest on the shared repository must provide the two stable feed assets. The client reads `https://github.com/Yafeiml/nodikarta/releases/latest/download/nodicarta-edge-stable-win-x64.json` and its sibling signature. The signature is Base64 of the 64-byte IEEE P1363 ECDSA P-256 signature over the exact UTF-8 manifest bytes, using SHA-256. The manifest binds the product, channel, OS/architecture, version, byte count, installer URL and SHA-256. A change of publisher key requires an explicit trust transition. Windows Authenticode signing of an installer, when used, must precede manifest signing.
+
+The installed MCP command keeps the same path across releases. A 1.0.x launcher loads the release-local file named `hostfxr.dll`. In Native AOT releases this is a small Nodicarta compatibility library that loads `NodicartaEdgeCli.dll` in the same process. Existing STDIO sessions finish on their original version and new sessions use the selected release.
 
 ## Qualification
 

@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -13,22 +14,22 @@ public sealed partial class EdgeSession
     internal bool HasPendingDeviceUpdate => File.Exists(PendingReplacementFile);
     internal static bool IsUpdateCode(string? code) => code?.TrimStart().StartsWith("U1.", StringComparison.Ordinal) == true;
 
-    private sealed record ReplacementAttempt(Uri Core, Guid PairingId, string Code, string Label,
+    internal sealed record ReplacementAttempt(Uri Core, Guid PairingId, string Code, string Label,
         string InstanceNonce, string AttemptSecret, Tokens? Candidate);
-    private sealed record ReplacementError(string Code);
-    private sealed record ReplacementProblem(ReplacementError? Error);
+    internal sealed record ReplacementError(string Code);
+    internal sealed record ReplacementProblem(ReplacementError? Error);
 
     private static void StoreAttempt(string path, ReplacementAttempt attempt)
     {
-        var plain = JsonSerializer.SerializeToUtf8Bytes(attempt);
-        try { WriteDurably(path, ProtectedData.Protect(plain, null, DataProtectionScope.LocalMachine)); }
+        var plain = JsonSerializer.SerializeToUtf8Bytes(attempt, EdgeJson.Default.ReplacementAttempt);
+        try { WriteDurably(path, ProtectSecret(Path.GetDirectoryName(path)!, plain)); }
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
 
     private static ReplacementAttempt ReadAttempt(string path)
     {
-        var plain = ProtectedData.Unprotect(File.ReadAllBytes(path), null, DataProtectionScope.LocalMachine);
-        try { return JsonSerializer.Deserialize<ReplacementAttempt>(plain) ?? throw new InvalidDataException("接替记录不完整。"); }
+        var plain = UnprotectSecret(Path.GetDirectoryName(path)!, File.ReadAllBytes(path));
+        try { return JsonSerializer.Deserialize(plain, EdgeJson.Default.ReplacementAttempt) ?? throw new InvalidDataException("接替记录不完整。"); }
         finally { CryptographicOperations.ZeroMemory(plain); }
     }
 
@@ -101,15 +102,15 @@ public sealed partial class EdgeSession
             {
                 if (attempt.Candidate == null)
                 {
-                    var candidate = await ReplacementRequestAsync(new Uri(uri, "claim"), new
+                    var candidate = await ReplacementRequestAsync(new Uri(uri, "claim"), new JsonObject
                     {
-                        oneTimeCode = attempt.Code, deviceLabel = attempt.Label,
-                        instanceNonce = attempt.InstanceNonce, attemptSecret = attempt.AttemptSecret
+                        ["oneTimeCode"] = attempt.Code, ["deviceLabel"] = attempt.Label,
+                        ["instanceNonce"] = attempt.InstanceNonce, ["attemptSecret"] = attempt.AttemptSecret
                     }, ct, claim: true);
                     attempt = attempt with { Candidate = candidate };
                     StoreAttempt(path, attempt);
                 }
-                var receipt = await ReplacementRequestAsync(new Uri(uri, "confirm"), new { attemptSecret = attempt.AttemptSecret }, ct);
+                var receipt = await ReplacementRequestAsync(new Uri(uri, "confirm"), new JsonObject { ["attemptSecret"] = attempt.AttemptSecret }, ct);
                 if (attempt.Candidate! with { ExpiresAt = receipt.ExpiresAt } != receipt)
                     throw new InvalidDataException("接替回执与已保存的新设备凭据不一致。");
                 saved = new(attempt.Core, receipt, "active");
@@ -130,13 +131,13 @@ public sealed partial class EdgeSession
         return new(saved.Core, saved.Tokens.DeviceId, saved.Tokens.EdgeId) { Profile = target.Profile };
     }
 
-    private async Task<Tokens> ReplacementRequestAsync(Uri uri, object body, CancellationToken ct, bool claim = false)
+    private async Task<Tokens> ReplacementRequestAsync(Uri uri, JsonObject body, CancellationToken ct, bool claim = false)
     {
         using var response = await PostCoreJsonAsync(uri, body, ct);
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.BadRequest)
         {
             // A generic error from an intermediate HTTP proxy must not erase a recoverable confirmation.
-            var problem = await response.Content.ReadFromJsonAsync<ReplacementProblem>(cancellationToken: ct);
+            var problem = await response.Content.ReadFromJsonAsync(EdgeJson.Web.ReplacementProblem, ct);
             if (response.StatusCode == HttpStatusCode.Unauthorized && problem?.Error?.Code == "pairing_unavailable")
                 throw new PairingRejected("设备更新码已失效或已被其他设备领取，请在 Core 核对设备状态。");
             if (response.StatusCode == HttpStatusCode.BadRequest && problem?.Error?.Code == "invalid_argument")

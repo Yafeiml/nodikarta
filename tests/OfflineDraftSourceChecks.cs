@@ -2,6 +2,7 @@
 #:property AssemblyName=ProjectHub.Edge.AccessChecks
 #:property PublishAot=false
 #:project ../src/ProjectHub.Edge/ProjectHub.Edge.csproj
+using System.Text.Json.Nodes;
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
@@ -130,7 +131,7 @@ try
     var earliest = DateTimeOffset.UtcNow;
     using (mcp.Use())
     {
-        var queued = await client.SubmitAsync("knowledge", lost, payload, ct);
+        var queued = await client.SubmitAsync("knowledge", lost, JsonSerializer.SerializeToNode(payload)!.AsObject(), ct);
         Check(queued.GetProperty("outcome").GetString() == "queuedLocally", "lost receipt retained locally");
     }
     var firstPost = posts.Last();
@@ -147,15 +148,15 @@ try
 
     var feedback = new { requestId = concurrent, content = "feedback" };
     Task<JsonElement> firstCall;
-    using (mcp.Use()) firstCall = client.SubmitAsync("feedback", concurrent, feedback, ct);
+    using (mcp.Use()) firstCall = client.SubmitAsync("feedback", concurrent, JsonSerializer.SerializeToNode(feedback)!.AsObject(), ct);
     await blocked.Task.WaitAsync(ct);
     var inFlight = posts.Last();
     using (cli.Use())
     {
-        try { await client.SubmitAsync("feedback", concurrent, new { requestId = concurrent, content = "different" }, ct); throw new Exception("accepted changed intent"); }
+        try { await client.SubmitAsync("feedback", concurrent, new JsonObject { ["requestId"] = concurrent, ["content"] = "different" }, ct); throw new Exception("accepted changed intent"); }
         catch (InvalidOperationException e) when (e.Message.Contains("请求标识")) { }
         reads.Clear();
-        var duplicate = await client.SubmitAsync("feedback", concurrent, feedback, ct);
+        var duplicate = await client.SubmitAsync("feedback", concurrent, JsonSerializer.SerializeToNode(feedback)!.AsObject(), ct);
         Check(duplicate.GetProperty("accepted").GetBoolean() && reads.Single() == new Headers("cli", null, null, null, null), "conflict retry authorization uses caller");
     }
     var retries = posts.Where(p => p.Id == concurrent).ToArray();

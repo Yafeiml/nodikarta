@@ -124,7 +124,7 @@ internal sealed record DesktopRunRecord(string Executable, string StateDirectory
             var path = RecordPath;
             CodexAccessFile.CheckPath(path);
             if (new FileInfo(path) is not { Exists: true, Length: > 0 and < 524288 }) return null;
-            var record = JsonSerializer.Deserialize<DesktopRunRecord>(File.ReadAllText(path));
+            var record = JsonSerializer.Deserialize(File.ReadAllText(path), DesktopJson.Default.DesktopRunRecord);
             return record != null && Path.IsPathFullyQualified(record.Executable) && Path.IsPathFullyQualified(record.StateDirectory)
                 ? record : null;
         }
@@ -139,7 +139,7 @@ internal sealed record DesktopRunRecord(string Executable, string StateDirectory
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            File.WriteAllText(temp, JsonSerializer.Serialize(this));
+            File.WriteAllText(temp, JsonSerializer.Serialize(this, DesktopJson.Default.DesktopRunRecord));
             File.Move(temp, path, true);
         }
         finally { File.Delete(temp); }

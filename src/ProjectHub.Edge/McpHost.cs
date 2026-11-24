@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.ComponentModel;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -19,6 +20,8 @@ namespace ProjectHub.Edge;
 
 internal static class McpHost
 {
+    internal static readonly JsonSerializerOptions ToolOptions = EdgeJson.CreateToolOptions();
+
     internal static IDisposable UseClientSource(McpServer server)
     {
         var client = server.ClientInfo;
@@ -42,7 +45,7 @@ internal static class McpHost
         });
         if (selection is null)
         {
-            builder.WithTools<ProjectTools>();
+            builder.WithTools<ProjectTools>(ToolOptions);
             return;
         }
 
@@ -53,7 +56,7 @@ internal static class McpHost
         {
             if (!methods.TryGetValue(name, out var method)) throw new ArgumentException("--tools 包含空白或未知的工具名。");
             builder.Services.AddSingleton(services => McpServerTool.Create(method, target: null,
-                new McpServerToolCreateOptions { Services = services }));
+                new McpServerToolCreateOptions { Services = services, SerializerOptions = ToolOptions }));
         }
     }
 
@@ -149,7 +152,10 @@ internal sealed partial class ProjectTools
     public static async Task<object> Projects(ProjectClient scope, CancellationToken ct)
     {
         var b = await scope.CurrentAsync(ct);
-        return new { items = new[] { new { b.ProjectId, b.Name, b.AccessMode, workspaceRelativeDirectory = scope.WorkspaceRelativeDirectory } } };
+        return new JsonObject { ["items"] = new JsonArray(new JsonObject {
+            ["projectId"] = b.ProjectId, ["name"] = b.Name, ["accessMode"] = b.AccessMode,
+            ["workspaceRelativeDirectory"] = scope.WorkspaceRelativeDirectory
+        }) };
     }
 
     [McpServerTool(Name = "get_project_snapshot", ReadOnly = true), Description("按任务原文接续项目。旧交付查固定用料，新工作查现行决定。若 versionUseChecks 有版本差异，用 searchQuery 核实现行采纳依据。设备离线时核对同设备、同指标的 observedAt，只报告最后实测。")]
@@ -180,13 +186,13 @@ internal sealed partial class ProjectTools
         [Description("知识的用途、决定的适用范围或设备的实测依据。仅依据可核实的材料填写。")] KnowledgeValidity? validity = null)
     {
         // Older offline drafts compare the serialized request byte for byte.
-        var message = new Dictionary<string, object?> {
+        var message = new JsonObject {
             [nameof(requestId)] = requestId, [nameof(title)] = title, [nameof(body)] = body,
             [nameof(evidence)] = evidence, [nameof(itemId)] = itemId, [nameof(baseVersion)] = baseVersion,
             [nameof(relatedTaskId)] = relatedTaskId
         };
-        if (assetRefs is not null) message.Add(nameof(assetRefs), assetRefs);
-        if (validity is not null) message.Add(nameof(validity), validity);
+        if (assetRefs is not null) message.Add(nameof(assetRefs), JsonSerializer.SerializeToNode(assetRefs, EdgeJson.Default.KnowledgeAssetRefArray));
+        if (validity is not null) message.Add(nameof(validity), JsonSerializer.SerializeToNode(validity, EdgeJson.Default.KnowledgeValidity));
         try { return await scope.SubmitAsync("knowledge", requestId, message, ct); }
         catch (ObservationConfirmationRequiredException ex) { throw new McpException(ex.Message); }
     }
@@ -198,15 +204,16 @@ internal sealed partial class ProjectTools
     public static Task<JsonElement> Feedback(ProjectClient scope, Guid requestId, string content, CancellationToken ct,
         Guid? targetEndpointId = null, string? kind = null, int? expected = null, int? observed = null)
     {
-        object? observation = null;
+        JsonObject? observation = null;
         if (kind is not null || expected.HasValue || observed.HasValue)
         {
             if (kind is not ("readOnlyWriteCount" or "duplicateCommitCount" or "retrievalResultCount") ||
                 expected is not (>= 0 and <= 1000000) || observed is not (>= 0 and <= 1000000))
                 throw new ArgumentException("请提供支持的诊断类型和两个有效计数。");
-            observation = new { kind, expected, observed };
+            observation = new JsonObject { ["kind"] = kind, ["expected"] = expected, ["observed"] = observed };
         }
-        return scope.SubmitAsync("feedback", requestId, new { requestId, content, targetEndpointId, observation }, ct);
+        return scope.SubmitAsync("feedback", requestId, new JsonObject { ["requestId"] = requestId, ["content"] = content,
+            ["targetEndpointId"] = targetEndpointId, ["observation"] = observation }, ct);
     }
 
     [McpServerTool(Name = "list_feedback", ReadOnly = true), Description("查看当前项目反馈及对应分析结果。")]
@@ -226,9 +233,9 @@ internal sealed partial class ProjectTools
 
     [McpServerTool(Name = "claim_analysis_task"), Description("人工授权领取本设备的分析任务。重试沿用原请求 ID。")]
     public static Task<JsonElement> Claim(ProjectClient scope, Guid taskId, Guid requestId, CancellationToken ct) =>
-        scope.WriteTaskAsync(taskId, "claim", new { requestId }, ct);
+        scope.WriteTaskAsync(taskId, "claim", new JsonObject { ["requestId"] = requestId }, ct);
 
     [McpServerTool(Name = "submit_task_result"), Description("提交本设备已领取任务的最终分析，关联原反馈。")]
     public static Task<JsonElement> Result(ProjectClient scope, Guid taskId, Guid requestId, string result, CancellationToken ct) =>
-        scope.WriteTaskAsync(taskId, "result", new { requestId, result }, ct);
+        scope.WriteTaskAsync(taskId, "result", new JsonObject { ["requestId"] = requestId, ["result"] = result }, ct);
 }

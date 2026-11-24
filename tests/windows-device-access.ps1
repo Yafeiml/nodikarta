@@ -1,4 +1,26 @@
 # Device-level checks run against the temporary profile created by windows-access-gui.ps1.
+function Get-HarnessFixtureIds($view) {
+    # The fixture puts a Claude Code launcher on its private PATH in every mode.
+    $null = Wait-Ui '隔离用户的 Claude Code 列表行' { ById $view 'HarnessInstall_claude' }
+    'codex'
+    if (ById $view 'HarnessInstall_claude-desktop') { 'claude-desktop' }
+    'claude','antigravity','cursor','opencode','deepseek','pi'
+}
+
+function Set-HarnessFixtureScroll($view,[double]$percent) {
+    $element = ById $view 'HarnessRows'
+    while ($element) {
+        $pattern = $null
+        if ($element.TryGetCurrentPattern([Windows.Automation.ScrollPattern]::Pattern,[ref]$pattern) -and $pattern.Current.VerticallyScrollable) {
+            $pattern.SetScrollPercent(-1,$percent)
+            $null = Wait-Ui '客户端列表滚动就位' { [Math]::Abs($pattern.Current.VerticalScrollPercent-$percent) -lt 1 }
+            return
+        }
+        if ($element.Current.AutomationId -eq 'AccessWindow') { break }
+        $element = [Windows.Automation.TreeWalker]::RawViewWalker.GetParent($element)
+    }
+}
+
 function Check-AccessMethods($access) {
     $buttons = $access.FindAll([Windows.Automation.TreeScope]::Descendants,
         [Windows.Automation.PropertyCondition]::new([Windows.Automation.AutomationElement]::ControlTypeProperty,
@@ -7,7 +29,7 @@ function Check-AccessMethods($access) {
     if (($formats -join ',') -ne 'ConfigFormatClients,ConfigFormatStdio,ConfigFormatSkills' -or (ById $access 'HttpWorkspace') -or (HasText $access '本机 HTTP')) {
         throw "智能体接入方式异常：$($formats -join ', ')"
     }
-    foreach ($id in 'codex','claude','antigravity','cursor','opencode','deepseek','pi') {
+    foreach ($id in (Get-HarnessFixtureIds $access)) {
         $null = Wait-Ui "$id 列表行" { ById $access "HarnessCopy_$id" }
         if (!(ById $access "HarnessStatus_$id") -or !(ById $access "HarnessInstall_$id")) { throw "缺少 $id 状态或接入按钮。" }
     }
@@ -35,8 +57,12 @@ function Check-SkillsCount($access,[int]$installed) {
 
 function Check-HarnessLayout($access, [double]$dpi) {
     $scale = $dpi/96
-    $previous = $null
-    foreach ($id in 'codex','claude','antigravity','cursor','opencode','deepseek','pi') {
+    $ids = @(Get-HarnessFixtureIds $access)
+    Set-HarnessFixtureScroll $access 0
+    for ($i=0; $i -lt $ids.Count; $i++) {
+        $id = $ids[$i]
+        if ($i -eq 4) { Set-HarnessFixtureScroll $access 100 }
+        $previous = if ($i -gt 0) { (ById $access "HarnessInstall_$($ids[$i-1])").Current.BoundingRectangle }
         $icon = (ById $access "HarnessIcon_$id").Current.BoundingRectangle
         $button = (ById $access "HarnessInstall_$id").Current.BoundingRectangle
         $copy = (ById $access "HarnessCopy_$id").Current.BoundingRectangle
@@ -47,8 +73,8 @@ function Check-HarnessLayout($access, [double]$dpi) {
             (ById $access "HarnessDisconnect_$id")) {
             throw "$id 图标、行高或右侧按钮的实际位置不符。"
         }
-        $previous = $button
     }
+    Set-HarnessFixtureScroll $access 0
 }
 
 function Check-AntigravityGuidance($access) {
@@ -195,7 +221,8 @@ function Check-CopiedConfig($access,[string]$button,[string]$preview,[scriptbloc
 }
 
 function Check-HarnessCopies($access) {
-    foreach ($id in 'claude','antigravity','cursor','opencode','deepseek','pi') {
+    foreach ($id in (Get-HarnessFixtureIds $access)) {
+        if ($id -eq 'codex') { continue } # The caller checks its TOML separately.
         Check-CopiedConfig $access "HarnessCopy_$id" '' {
             param($text)
             if ($id -eq 'deepseek') { return $text.Contains('@deepseek-ai/dsh-mcp-client') -and $text.Contains($cli) -and $text.Contains($state) }
@@ -207,6 +234,7 @@ function Check-HarnessCopies($access) {
             $entry = $doc.mcpServers.projecthub
             if ($entry.command -ne $cli -or $entry.args -notcontains $state) { return $false }
             switch ($id) {
+                'claude-desktop' { return $entry.args -contains '--workspace-roots' -and $entry.args -notcontains 'CLAUDE_PROJECT_DIR' }
                 'claude' { return $entry.args -contains 'CLAUDE_PROJECT_DIR' }
                 'antigravity' { return $entry.args -contains '--workspace-roots' }
                 'cursor' { return $entry.env.PROJECTHUB_WORKSPACE -ceq '${workspaceFolder}' }

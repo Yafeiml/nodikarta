@@ -1,7 +1,7 @@
 #requires -Version 7.0
 [CmdletBinding(DefaultParameterSetName='Public')]
 param(
-    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$Version = '1.0.0',
+    [ValidatePattern('^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$')][string]$Version = '1.1.0',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../../artifacts/edge-public'),
     [Parameter(Mandatory,ParameterSetName='Test')][uri]$TestFeed,
     [Parameter(Mandatory,ParameterSetName='Test')][string]$TestPublicKeyFile,
@@ -24,7 +24,7 @@ if ($testing) {
 $channel = if ($testing) { 'test' } else { 'stable' }
 $out = [IO.Directory]::CreateDirectory((Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "$channel/$Version")).FullName
 $archiveDirectory = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) "test-archives/$channel/$Version"
-$package = & (Join-Path $PSScriptRoot 'Publish-Edge.ps1') -Desktop -Version $Version -OutputDirectory $archiveDirectory -UpdateFeed $feed -PublisherPublicKey $key -TestChannel:$testing |
+$package = & (Join-Path $PSScriptRoot 'Publish-Edge.ps1') -NativeAot -Desktop -Version $Version -OutputDirectory $archiveDirectory -UpdateFeed $feed -PublisherPublicKey $key -TestChannel:$testing |
     Where-Object { $_.PSObject.Properties['Archive'] }
 if (!$package -or ![IO.File]::Exists($package.Archive)) { throw 'Desktop build did not return a verified archive.' }
 $setup = & (Join-Path $PSScriptRoot 'Build-EdgeSetup.ps1') -PackageDirectory $package.Directory -Version $Version -OutputDirectory $out -TestScope:$testing |

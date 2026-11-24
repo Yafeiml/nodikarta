@@ -10,6 +10,12 @@ $ErrorActionPreference = 'Stop'
 $plan = Get-EdgeStatePlan ($StateDirectory ? $StateDirectory : (Join-Path (Get-EdgeKnownFolder CommonApplicationData) 'Nodicarta/Edge'))
 $state = $plan.Path
 $exe = [IO.Path]::GetFullPath($EdgeExe)
+if ($plan.Independent) {
+    # Verify the requested spelling before touching any worker or login link. An
+    # independently recreated old store and its dispatch registrations stay separate.
+    Invoke-EdgeStateMigration $exe $plan
+    $plan.Legacy = $null
+}
 $local = Get-EdgeKnownFolder LocalApplicationData
 $shell = New-Object -ComObject WScript.Shell
 $startup = $shell.SpecialFolders.Item('Startup')

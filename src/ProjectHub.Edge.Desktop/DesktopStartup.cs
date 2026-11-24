@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Security.Principal;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -13,8 +12,7 @@ internal sealed class DesktopStartup(string executable, string stateDirectory, s
 
     internal static DesktopStartup ForCurrentUser(string state)
     {
-        var testChannel = typeof(DesktopStartup).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .Any(a => a.Key == "NodicartaUpdateTestChannel" && string.Equals(a.Value, "true", StringComparison.OrdinalIgnoreCase));
+        var testChannel = WindowsAotReleaseMetadata.IsFixture;
         var testHome = Environment.GetEnvironmentVariable("NODICARTA_EDGE_SETUP_TEST_HOME");
         if (testChannel && Environment.GetEnvironmentVariable("NODICARTA_EDGE_SETUP_SCOPE") == "fixture" &&
             !string.IsNullOrWhiteSpace(testHome) && Path.IsPathFullyQualified(testHome))

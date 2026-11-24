@@ -13,10 +13,10 @@ internal sealed record StandardHarness(string Id, string Name, string ConfigPath
     {
         var args = EdgeAccessSetup.GlobalArguments(state);
         if (Id == "opencode")
-            return new JsonObject { ["type"] = "local", ["command"] = JsonSerializer.SerializeToNode(new[] { command }.Concat(args)) };
+            return new JsonObject { ["type"] = "local", ["command"] = JsonSerializer.SerializeToNode(new[] { command }.Concat(args).ToArray(), DesktopJson.Default.StringArray) };
 
         var entry = new JsonObject { ["command"] = command };
-        if (Id == "antigravity") args = [.. args, "--workspace-roots"];
+        if (Id is "antigravity" or "claude-desktop") args = [.. args, "--workspace-roots"];
         if (Id is "claude" or "cursor")
         {
             entry["type"] = "stdio";
@@ -24,14 +24,16 @@ internal sealed record StandardHarness(string Id, string Name, string ConfigPath
             args = [.. args, "--workspace-env", variable];
             if (Id == "cursor") entry["env"] = new JsonObject { [variable] = "${workspaceFolder}" };
         }
-        entry["args"] = JsonSerializer.SerializeToNode(args);
+        entry["args"] = JsonSerializer.SerializeToNode(args, DesktopJson.Default.StringArray);
         return entry;
     }
 }
 
 internal static class StandardHarnesses
 {
-    internal static IReadOnlyList<StandardHarness> Detect()
+    private const string ClaudePackageFamily = "Claude_pzs8sxrjxfjjc";
+
+    internal static IReadOnlyList<StandardHarness> Detect(Func<bool>? detectClaudeDesktopPackage = null)
     {
         var home = GlobalCodexAccess.UserHome;
         var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -43,7 +45,10 @@ internal static class StandardHarnesses
         var claude = File.Exists(legacyClaude) ? legacyClaude : Path.Combine(customClaude ? claudeDirectory! : home, ".claude.json");
         var antigravity = Path.Combine(home, ".gemini", "config", "mcp_config.json");
         var cursor = Path.Combine(home, ".cursor", "mcp.json");
-        return [
+        var roaming = Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var desktop = ClaudeDesktop(local, roaming, detectClaudeDesktopPackage?.Invoke() ?? HarnessDetection.PackageRegistered(ClaudePackageFamily),
+            File.Exists(Path.Combine(local, "AnthropicClaude", "claude.exe")) || Installed(@"Claude\Claude.exe"));
+        List<StandardHarness> clients = [
             new StandardHarness("claude", "Claude Code", claude, ["mcpServers"],
                 HarnessDetection.OnPath("claude") || File.Exists(Path.Combine(home, ".local", "bin", "claude.exe")) ||
                 File.Exists(Path.Combine(local, "Microsoft", "WinGet", "Links", "claude.exe")),
@@ -57,14 +62,34 @@ internal static class StandardHarnesses
                 ConnectedMessage = "Antigravity 已接入。绑定目录后，从该项目新建聊天即可查询资料。解绑后会移除连接和查询指引。"
             },
             new StandardHarness("cursor", "Cursor", cursor, ["mcpServers"],
-                HarnessDetection.OnPath("cursor", "cursor-agent") || Installed(@"cursor\Cursor.exe") ||
+                HarnessDetection.OnPath("cursor", "cursor-agent") || WindowsDesktopInstallation.CursorDesktop(local, programs) ||
                 File.Exists(Path.Combine(local, "cursor-agent", "cursor-agent.cmd")),
                 "在 Cursor 打开已绑定的文件夹，在 Settings → Tools & MCP 中确认 projecthub 已启用。"),
-            OpenCode(home, local, Installed(@"OpenCode\OpenCode.exe"))
+            OpenCode(home, WindowsDesktopInstallation.OpenCodeDesktop(local, programs))
         ];
+        if (desktop.Detected) clients.Insert(0, desktop);
+        return clients;
     }
 
-    private static StandardHarness OpenCode(string home, string local, bool desktopInstalled)
+    internal static StandardHarness ClaudeDesktop(string local, string roaming, bool packaged, bool classicInstalled)
+    {
+        var directory = Path.Combine(roaming, "Claude");
+        string? blocked = null;
+        if (packaged)
+        {
+            // Recent Store releases migrate out of LocalCache and leave the old directory behind.
+            var family = ClaudePackageFamily.ToLowerInvariant();
+            var current = Path.Combine(local, "Claude-Data", family);
+            var legacy = Path.Combine(local, "Packages", ClaudePackageFamily, "LocalCache", "Roaming", "Claude");
+            if (Directory.Exists(current)) directory = current;
+            else if (Directory.Exists(legacy) && !File.Exists(Path.Combine(legacy, ".user-data-left." + family))) directory = legacy;
+            else blocked = "请先打开一次 Claude 桌面版，再返回接入。";
+        }
+        return new StandardHarness("claude-desktop", "Claude Desktop", Path.Combine(directory, "claude_desktop_config.json"),
+            ["mcpServers"], packaged || classicInstalled, "接入后请完全退出并重新打开 Claude。") { BlockedReason = blocked };
+    }
+
+    private static StandardHarness OpenCode(string home, bool desktopInstalled)
     {
         var xdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
         var global = Path.Combine(!string.IsNullOrWhiteSpace(xdg) && Path.IsPathFullyQualified(xdg) ? xdg : Path.Combine(home, ".config"), "opencode");
@@ -78,7 +103,7 @@ internal static class StandardHarnesses
         var path = explicitFile && !explicitDirectory ? Path.GetFullPath(custom!) : File.Exists(jsonc) ? jsonc : json;
         var target = new StandardHarness("opencode", "OpenCode", path, ["mcp"], desktopInstalled ||
             HarnessDetection.OnPath("opencode") || File.Exists(Path.Combine(home, ".opencode", "bin", "opencode.exe")) ||
-            File.Exists(Path.Combine(local, "OpenCode", "OpenCode.exe")) || File.Exists(Path.Combine(home, ".local", "bin", "opencode.exe")),
+            File.Exists(Path.Combine(home, ".local", "bin", "opencode.exe")),
             "在已绑定的目录启动 OpenCode，在 MCP 列表中查看 projecthub。");
         if (!explicitFile && !string.IsNullOrWhiteSpace(custom))
             return target with { BlockedReason = "OPENCODE_CONFIG 需要指向绝对路径。" };

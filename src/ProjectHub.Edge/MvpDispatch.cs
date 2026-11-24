@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
@@ -6,7 +7,6 @@ namespace ProjectHub.Edge;
 
 internal sealed class MvpDispatch(EdgeSession session)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private sealed record Route(Guid Project, Guid Binding, Guid Endpoint, string Directory, string Executable, Guid Thread, Guid? Workspace);
     private sealed record Attempt(Guid Claim, Guid Result, string Stage);
 
@@ -27,12 +27,14 @@ internal sealed class MvpDispatch(EdgeSession session)
 
     private static string UserSid()
     {
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("此派工功能仅在 Windows 上提供。");
         using var user = WindowsIdentity.GetCurrent();
         return user.User?.Value ?? throw new InvalidOperationException("未取得桌面用户身份。");
     }
 
     internal static void RemoveWorkspaceRoutes(string stateDirectory, Guid project, Guid workspace, string directory)
     {
+        if (!OperatingSystem.IsWindows()) return;
         var file = Path.Combine(stateDirectory, "mvp.sqlite3");
         if (!File.Exists(file)) return;
         // Retire legacy path-only routes durably before the caller commits the workspace removal.
@@ -57,7 +59,7 @@ internal sealed class MvpDispatch(EdgeSession session)
         tx.Commit();
     }
 
-    public async Task<object> LinkAsync(Guid project, string directory, string exe, Guid thread, string name, CancellationToken ct)
+    public async Task<JsonObject> LinkAsync(Guid project, string directory, string exe, Guid thread, string name, CancellationToken ct)
     {
         var path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
         var local = (await session.BindingsAsync(ct)).FirstOrDefault(row => row.ProjectId == project &&
@@ -66,7 +68,7 @@ internal sealed class MvpDispatch(EdgeSession session)
         var probe = await runtime.ProbeAsync(ct);
         if (!probe.Available) throw new InvalidOperationException(probe.Detail);
         var api = new ProjectClient(session, project, local.BindingId, true, workspace: local.WorkspaceId);
-        var info = await api.WriteAsync("endpoints", new { requestId = Guid.NewGuid(), name }, ct);
+        var info = await api.WriteAsync("endpoints", new JsonObject { ["requestId"] = Guid.NewGuid(), ["name"] = name }, ct);
         var endpoint = info.GetProperty("endpointId").GetGuid();
         using var bindingDb = session.Connect();
         using var bindingLock = bindingDb.BeginTransaction(deferred: false);
@@ -99,11 +101,12 @@ internal sealed class MvpDispatch(EdgeSession session)
                 r.Binding == local.BindingId && string.Equals(r.Directory, path, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("端点已绑定其他会话。请为新会话选择独立端点名称。");
         tx.Commit();
-        return new { projectId = project, bindingId = local.BindingId, endpointId = endpoint, threadId = thread };
+        return new JsonObject { ["projectId"] = project, ["bindingId"] = local.BindingId, ["endpointId"] = endpoint, ["threadId"] = thread };
     }
 
     internal HashSet<Guid> LocalEndpoints(LocalBinding binding)
     {
+        if (!OperatingSystem.IsWindows()) return [];
         var file = Path.Combine(session.StateDirectory, "mvp.sqlite3");
         if (!File.Exists(file)) return [];
         using var db = new SqliteConnection(new SqliteConnectionStringBuilder
@@ -193,13 +196,13 @@ internal sealed class MvpDispatch(EdgeSession session)
                     if (task.GetProperty("targetEndpointId").GetGuid() != route.Endpoint ||
                         task.GetProperty("status").GetString() is not ("pending" or "claimed") ||
                         !task.TryGetProperty("observation", out var value) || value.ValueKind != JsonValueKind.Object) continue;
-                    var observation = value.Deserialize<CodexObservation>(Json)!;
+                    var observation = value.Deserialize(EdgeJson.Web.CodexObservation)!;
                     var id = task.GetProperty("taskId").GetGuid();
                     var attempt = GetAttempt(db, route.Endpoint, id, task.GetProperty("status").GetString() == "pending");
                     if (attempt is null || attempt.Stage == "completed") continue;
                     if (attempt.Stage == "ready")
                     {
-                        await api.WriteAsync($"tasks/{id}/claim", new { requestId = attempt.Claim }, ct);
+                        await api.WriteAsync($"tasks/{id}/claim", new JsonObject { ["requestId"] = attempt.Claim }, ct);
                         if (session.MatchWorkspace(route.Directory)?.WorkspaceId != directory.WorkspaceId) break;
                         // A crash across this boundary has an unknown delivery outcome. Reconcile; never resubmit.
                         if (!SetStage(db, id, "ready", "dispatched")) continue;
@@ -217,7 +220,7 @@ internal sealed class MvpDispatch(EdgeSession session)
                     // Keep checking this exact attempt; never enqueue it a second time.
                     if (actual.Status == "failed") SetStage(db, id, "dispatched", "failed", actual);
                     if (actual.Status != "completed" || string.IsNullOrWhiteSpace(actual.Text)) continue;
-                    await api.WriteAsync($"tasks/{id}/result", new { requestId = attempt.Result, result = actual.Text }, ct);
+                    await api.WriteAsync($"tasks/{id}/result", new JsonObject { ["requestId"] = attempt.Result, ["result"] = actual.Text }, ct);
                     SetStage(db, id, attempt.Stage == "failed" ? "failed" : "dispatched", "completed", actual);
                     Console.Error.WriteLine($"任务 {id} 的最终结果已由 Core 确认。");
                 }

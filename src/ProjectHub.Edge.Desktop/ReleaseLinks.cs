@@ -34,10 +34,11 @@ internal sealed class ReleaseLinks
             throw new IOException("Edge shortcuts point to conflicting installations.");
         ExistingDesktop = anchor?.Target;
         var states = new[] { current, legacy, auto, legacyAuto }.Where(link => link != null)
-            .Select(link => RequestedState(link!.Value.Arguments)).Where(state => state != null)
-            .Select(state => EdgeStatePaths.Normalize(state!)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        if (states.Length > 1) throw new IOException("Edge shortcuts select conflicting data directories.");
+            .Select(link => RequestedState(link!.Value.Arguments)).OfType<string>()
+            .Select(state => Path.TrimEndingDirectorySeparator(Path.GetFullPath(state))).ToArray();
         ExistingState = states.FirstOrDefault();
+        if (ExistingState != null && states.Any(state => !EdgeStatePaths.Same(state, ExistingState)))
+            throw new IOException("Edge shortcuts select conflicting data directories.");
         StartupEnabled = anchor == null || auto != null || (legacyAuto != null && (scope != null || DesktopStartup.IsApproved(LegacyName)));
     }
 
@@ -86,7 +87,7 @@ internal sealed class ReleaseLinks
                 link.TargetPath = target;
                 link.Arguments = args;
                 link.Description = "Nodicarta Edge";
-                link.WorkingDirectory = Path.GetDirectoryName(target);
+                link.WorkingDirectory = Path.GetDirectoryName(target)!;
                 link.IconLocation = target + ",0";
                 link.Save();
                 return true;

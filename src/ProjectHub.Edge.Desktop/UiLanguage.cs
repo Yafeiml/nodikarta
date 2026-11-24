@@ -3,7 +3,10 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using Avalonia.Data;
 using Avalonia.Data.Converters;
+using Avalonia.Data.Core;
 using Avalonia.Markup.Xaml;
+using Avalonia.Markup.Xaml.MarkupExtensions;
+using Avalonia.Markup.Xaml.MarkupExtensions.CompiledBindings;
 
 namespace ProjectHub.Edge.Desktop;
 
@@ -39,7 +42,8 @@ internal static class UiLanguage
         return (GetUserDefaultUILanguage() & 0x03ff) == 0x04 ? "zh" : "und";
     }
 
-    internal static Func<string> ReadSystemLanguage { get; set; } = WindowsDisplayLanguage;
+    internal static Func<string> ReadSystemLanguage { get; set; } =
+        OperatingSystem.IsWindows() ? WindowsDisplayLanguage : () => CultureInfo.CurrentUICulture.Name;
     private static bool SystemIsEnglish()
     {
         var tag = ReadSystemLanguage();
@@ -103,10 +107,13 @@ internal static class UiLanguage
 
 public sealed class TrExtension(string chinese) : MarkupExtension
 {
+    private static readonly CompiledBindingPath LanguagePath = new CompiledBindingPathBuilder()
+        .Property(new ClrPropertyInfo(nameof(UiLanguage.Selection.English), source => ((UiLanguage.Selection)source).English,
+            null, typeof(bool)), PropertyInfoAccessorFactory.CreateInpcPropertyAccessor).Build();
     public string? English { get; set; }
 
     public override object ProvideValue(IServiceProvider serviceProvider) =>
-        new Binding(nameof(UiLanguage.Selection.English))
+        new CompiledBindingExtension(LanguagePath)
         {
             Source = UiLanguage.Current,
             Mode = BindingMode.OneWay,

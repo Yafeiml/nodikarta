@@ -41,7 +41,16 @@ internal partial class MainWindow : Window
         PositionChanged += (_, _) => FitToWorkingArea();
         ScalingChanged += (_, _) => FitToWorkingArea();
         Screens.Changed += ScreenChanged;
-        Win32Properties.AddWndProcHookCallback(this, FilterWindowCommands);
+        if (OperatingSystem.IsWindows()) Win32Properties.AddWndProcHookCallback(this, FilterWindowCommands);
+        if (OperatingSystem.IsLinux())
+        {
+            FontFamily = FontFamily.Default;
+            PreferencesButton.IsVisible = AccessSettingsButton.IsVisible = false;
+            FolderPath.IsVisible = true;
+            PairOpenCoreButton.Width = PairButton.Width = 132;
+            GlobalAccessButton.Width = 144;
+            LinuxLabels();
+        }
         DesktopVersion.Text = $"v{Program.ReleaseVersion}";
         overviewPage = PageHost.Child!;
         DeviceName.Text = Environment.MachineName;
@@ -111,12 +120,22 @@ internal partial class MainWindow : Window
 
     private void RefreshLanguage()
     {
+        if (OperatingSystem.IsLinux()) LinuxLabels();
         Title = accessWindow is null ? UiLanguage.Product : UiLanguage.Message(accessWindow.IsDevicePage
             ? "脉络 Edge · 智能体接入" : "脉络 Edge · 目录设置");
         UpdatePairAction();
         labels.Refresh();
         foreach (var row in BoundDirectories.Items.OfType<DirectoryRow>()) row.RefreshLanguage();
         accessWindow?.RefreshLanguage();
+    }
+
+    private void LinuxLabels()
+    {
+        var close = UiLanguage.Text("关闭窗口", "Close window");
+        ToolTip.SetTip(CloseButton, close);
+        Avalonia.Automation.AutomationProperties.SetName(CloseButton, close);
+        GlobalAccessButton.Content = UiLanguage.Text("复制 MCP 配置", "Copy MCP config");
+        ToolTip.SetTip(GlobalAccessButton, UiLanguage.Text("在智能体的 MCP 设置中粘贴配置，从已绑定目录启动。", "Paste into your client's MCP settings and start it in a linked folder."));
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -232,7 +251,8 @@ internal partial class MainWindow : Window
         Overview.IsVisible = identity != null;
         if (identity == null)
         {
-            labels.Set(Message, resuming ? "设备接替等待 Core 确认。连接恢复后 Edge 会自动继续，也可用同一码重试。" : "关闭窗口后继续在托盘等待配对");
+            labels.Set(Message, resuming ? "设备接替等待 Core 确认。连接恢复后 Edge 会自动继续，也可用同一码重试。" :
+                OperatingSystem.IsLinux() ? "等待设备配对" : "关闭窗口后继续在托盘等待配对");
             return;
         }
         MachineName.Text = client.GetDeviceName(identity.DeviceId);
@@ -253,7 +273,7 @@ internal partial class MainWindow : Window
         }
         SetCoreStatus("在线", "#E1F4E9", "#176346");
         DisplayProjects(snapshot.Projects, snapshot.Bindings, "暂无授权项目。请管理员在 Core 中授权后刷新。");
-        labels.Set(Message, "关闭窗口后继续在托盘运行");
+        labels.Set(Message, OperatingSystem.IsLinux() ? "已连接到 Core" : "关闭窗口后继续在托盘运行");
     }
 
     private async Task RunAsync(Func<Task> action, Action? onError = null)
@@ -306,7 +326,18 @@ internal partial class MainWindow : Window
 
     private void ShowAccessSettings(object? sender, RoutedEventArgs e) => OpenAccessSettings(false);
 
-    private void ShowGlobalSettings(object? sender, RoutedEventArgs e) => OpenAccessSettings();
+    private async void ShowGlobalSettings(object? sender, RoutedEventArgs e)
+    {
+        if (!OperatingSystem.IsLinux()) { OpenAccessSettings(); return; }
+        await RunAsync(async () =>
+        {
+            var command = Path.Combine(AppContext.BaseDirectory, "ProjectHub.Edge");
+            if (!File.Exists(command)) throw new FileNotFoundException(UiLanguage.Text("找不到随包提供的 Edge 命令行程序。", "The bundled Edge command-line program is missing."));
+            var clipboard = Clipboard ?? throw new InvalidOperationException("无法访问系统剪贴板。");
+            await clipboard.SetTextAsync(EdgeAccessSetup.StdioJson(command, EdgeAccessSetup.GlobalArguments(client.StateDirectory)));
+            labels.Set(Message, "已复制 MCP 配置");
+        });
+    }
 
     internal void Reveal()
     {
@@ -404,15 +435,27 @@ internal partial class MainWindow : Window
     private async void ChooseFolder(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         if (ProjectList.SelectedItem is not DeviceProject project || identity is not { } original) return;
-        var chosen = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        string path;
+        if (OperatingSystem.IsLinux() && !string.IsNullOrWhiteSpace(FolderPath.Text))
         {
-            Title = UiLanguage.Text($"为「{project.Name}」选择本机目录", $"Choose a local folder for {project.Name}"), AllowMultiple = false
-        });
-        if (chosen.Count == 0) return;
-        using var folder = chosen[0];
-        var path = folder.TryGetLocalPath() ?? throw new ArgumentException("请选择本机可访问的目录。");
+            path = FolderPath.Text;
+            if (!Path.IsPathFullyQualified(path)) throw new ArgumentException(UiLanguage.Text("请输入本地目录的绝对路径。", "Enter the absolute path of a local folder."));
+        }
+        else
+        {
+            if (OperatingSystem.IsLinux() && !StorageProvider.CanPickFolder)
+                throw new InvalidOperationException(UiLanguage.Text("请在目录输入框中填写绝对路径。", "Type an absolute path in the folder field."));
+            var chosen = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = UiLanguage.Text($"为「{project.Name}」选择本机目录", $"Choose a local folder for {project.Name}"), AllowMultiple = false
+            });
+            if (chosen.Count == 0) return;
+            using var folder = chosen[0];
+            path = folder.TryGetLocalPath() ?? throw new ArgumentException("请选择本机可访问的目录。");
+        }
         try { await client.SessionFor(original).BindAsync(project.ProjectId, path); }
         finally { await LoadAsync(); }
+        FolderPath.Text = "";
         labels.Set(Message, "已绑定所选目录");
     });
 

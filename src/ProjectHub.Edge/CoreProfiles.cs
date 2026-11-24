@@ -23,7 +23,7 @@ public sealed partial class EdgeSession
         var directory = EdgeStatePaths.Resolve(stateDirectory);
         var name = Path.GetFileName(directory);
         var pinned = Guid.Empty;
-        var child = name.StartsWith(ProfilePrefix, StringComparison.OrdinalIgnoreCase)
+        var child = name.StartsWith(ProfilePrefix, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)
             && Guid.TryParseExact(name.AsSpan(ProfilePrefix.Length), "N", out pinned) && pinned != Guid.Empty;
         var root = child ? Path.GetDirectoryName(directory)! : directory;
         EnsurePrivateDirectory(root);
@@ -88,7 +88,7 @@ public sealed partial class EdgeSession
         if (saved == null)
         {
             Tokens tokens;
-            try { tokens = await RedeemAsync(core, pairingId, secret, label, ct); }
+            try { tokens = await target.RedeemAsync(core, pairingId, secret, label, ct); }
             catch (PairingRejected) when (created)
             {
                 RemoveRejectedProfile(target, parent);
@@ -110,12 +110,15 @@ public sealed partial class EdgeSession
         var temp = path + "." + Guid.NewGuid().ToString("N");
         try
         {
-            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (OperatingSystem.IsLinux()) options.UnixCreateMode = LinuxState.PrivateFileMode;
+            using (var output = new FileStream(temp, options))
             {
                 output.Write(bytes);
                 output.Flush(flushToDisk: true);
             }
             File.Move(temp, path, overwrite: true);
+            if (OperatingSystem.IsLinux()) LinuxState.SyncDirectory(Path.GetDirectoryName(path)!);
         }
         finally { File.Delete(temp); }
     }
@@ -128,7 +131,8 @@ public sealed partial class EdgeSession
             var files = folder.GetFileSystemInfos();
             if (folder.Attributes.HasFlag(FileAttributes.ReparsePoint)
                 || files.Any(f => f is not FileInfo || f.Attributes.HasFlag(FileAttributes.ReparsePoint)
-                    || f.Name is not (PreviousFile or "edge.sqlite3" or "edge.sqlite3-wal" or "edge.sqlite3-shm"))
+                    || (f.Name is not (PreviousFile or "edge.sqlite3" or "edge.sqlite3-wal" or "edge.sqlite3-shm")
+                        && !(OperatingSystem.IsLinux() && f.Name == LinuxState.KeyName)))
                 || !File.Exists(parent) || target.ReadStoredCredentials() != null) return;
             foreach (var item in files) File.Delete(item.FullName);
             folder.Delete();

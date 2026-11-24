@@ -169,14 +169,16 @@ def captured_mask(image,fg,bg):
 
 def run():
     checks={'svg':{},'ico':{},'pe':{},'runtime':{}}
-    dll=(bin_dir/'ProjectHub.Edge.Desktop.dll').read_bytes();checks['desktopDllSha256']=digest(dll)
+    image_name=next(name for name in ('ProjectHub.Edge.Desktop.dll','ProjectHub.Edge.Desktop.exe') if (bin_dir/name).is_file())
+    image_bytes=(bin_dir/image_name).read_bytes()
+    checks['desktopImage']={'name':image_name,'sha256':digest(image_bytes)}
     for kind,name in svg_files.items():
         original=ET.parse(sources[kind]).getroot()
         root=ET.parse(assets/name).getroot()
         assert original[-1].get('fill').upper()=='#111111' and root[-1].get('fill').upper()=='#175F4E'
         original[-1].set('fill',root[-1].get('fill'))
         assert signature(original)==signature(root), f'SVG geometry mismatch: {name}'
-        raw=(assets/name).read_bytes();assert raw in dll, f'{name} missing from packaged DLL'
+        raw=(assets/name).read_bytes();assert raw in image_bytes, f'{name} missing from packaged desktop image'
         checks['svg'][kind]={'sourceSha256':digest(sources[kind].read_bytes()),'packagedSha256':digest(raw)}
     with tempfile.TemporaryDirectory(prefix='nodicarta-icon-reference-',ignore_cleanup_errors=True) as tmp:
         refs=reference_images(Path(tmp))
@@ -185,13 +187,13 @@ def run():
             if not (assets/name).exists():
                 continue
             raw=(assets/name).read_bytes()
-            if raw not in dll:
+            if raw not in image_bytes:
                 continue
             with Image.open(io.BytesIO(raw)) as bitmap:
                 assert bitmap.size==(256,256) and closest_colour(bitmap)==(23,95,78)
                 checks['svg'][kind]['renderedAsset']=score(bitmap.convert('RGBA').getchannel('A'),refs,256,kind)
         for name,colour in [('edge.ico',(57,136,110)),('edge-tray.ico',(23,95,78)),('edge-tray-dark.ico',(181,229,207))]:
-            raw=(assets/name).read_bytes();assert raw in dll, f'{name} missing from packaged DLL'
+            raw=(assets/name).read_bytes();assert raw in image_bytes, f'{name} missing from packaged desktop image'
             frames=ico_contents(raw);assert sorted(frames)==sizes
             decoded=IcoImagePlugin.IcoFile(io.BytesIO(raw))
             result=[]

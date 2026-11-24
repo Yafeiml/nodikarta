@@ -74,6 +74,20 @@ server.listen(0,'127.0.0.1',()=>{const p=spawn(exe,['--state',state,'pair','--co
     Assert ($again.Running -and (Get-Content -Raw -LiteralPath $pidFile | ConvertFrom-Json).processId -eq $running) 'Legacy command launched a second worker'
     $stopped = & $privateScript -Action Disable -StateDirectory $newState -EdgeExe $new
     Assert (!$stopped.Running -and !$stopped.StartsAtLogin -and !(Test-Path -LiteralPath $link)) 'Disable must stop and remove startup'
+    $junction = Get-Item -LiteralPath $testState
+    Assert ($junction.LinkType -eq 'Junction' -and $junction.LinkTarget -eq $newState) 'Expected the test junction'
+    [IO.Directory]::Delete($junction.FullName)
+    $null = [IO.Directory]::CreateDirectory($testState)
+    Set-Acl -LiteralPath $testState -AclObject (Get-Acl -LiteralPath $newState)
+    @{Executable=(Join-Path $work.FullName 'ProjectHub.Edge.Desktop.exe');StateDirectory=$newState} |
+        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testLocal 'Nodicarta/desktop-location.json')
+    $oldLink = Write-OldLink $testState $oldDir
+    $selected = & $privateScript -Action Status -StateDirectory $newState -EdgeExe $new
+    Assert (!$selected.StartsAtLogin -and (Test-Path -LiteralPath $oldLink)) 'The new store adopted an independent old login link'
+    $denied = $false
+    try { & $privateScript -Action Start -StateDirectory $testState -EdgeExe $new }
+    catch { $denied = $true }
+    Assert ($denied -and (Test-Path -LiteralPath $oldLink)) 'The independent old dispatch was redirected'
     "PASS active dispatch handoff, physical data and prior controller preserved, old command reuses new PID, broken shortcut remains inactive"
 } finally {
     if ($oldProcess -and !$oldProcess.HasExited) { $oldProcess.Kill(); $oldProcess.WaitForExit() }

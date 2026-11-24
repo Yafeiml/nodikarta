@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Text.Json;
 
 namespace ProjectHub.Edge;
@@ -56,7 +57,7 @@ internal static class MvpCommands
             var name = Take("--name");
             Check();
             var link = await new MvpDispatch(session).LinkAsync(projectId, path, executable, thread, name, ct);
-            Console.WriteLine(JsonSerializer.Serialize(link));
+            Console.WriteLine(link.ToJsonString());
             return 0;
         }
         var bindingId = Guid.Parse(Take("--binding"));
@@ -65,7 +66,7 @@ internal static class MvpCommands
             var name = Take("--name");
             Check();
             var registered = await new ProjectClient(session, projectId, bindingId, true)
-                .WriteAsync("endpoints", new { requestId = Guid.NewGuid(), name }, ct);
+                .WriteAsync("endpoints", new JsonObject { ["requestId"] = Guid.NewGuid(), ["name"] = name }, ct);
             Console.WriteLine(registered.GetRawText());
             return 0;
         }

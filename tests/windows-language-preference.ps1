@@ -204,6 +204,6 @@ try {
     Assert-Language 'restore Auto in narrow window' 'auto'
     $null = Inspect-LanguageMenu 'auto'
     [ordered]@{version=$productVersion;checkedAtUtc=[datetime]::UtcNow.ToString('o');windowsBuild=[Environment]::OSVersion.Version.Build;
-        windowsDisplayLanguage=$windowsLanguage.Name;desktopDllSha256=(Get-FileHash -LiteralPath (Join-Path (Split-Path $exe) 'ProjectHub.Edge.Desktop.dll')).Hash;
+        windowsDisplayLanguage=$windowsLanguage.Name;desktopImageSha256=(Get-EdgeDesktopImageHash $exe);
         cases=$results} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'checks.json') -Encoding utf8
 } finally { $null = [EdgeLanguageInput]::SetThreadDpiAwarenessContext($prior) }

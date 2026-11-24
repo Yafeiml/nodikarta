@@ -20,13 +20,14 @@ internal sealed record HarnessRow(string Id, string Name, bool Installed, string
     }
 }
 
-internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detectCodex = null)
+internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detectCodex = null, Func<bool>? detectClaudeDesktopPackage = null)
 {
     private readonly GlobalCodexAccess codex = new(client);
     private readonly Func<bool> codexInstalled = detectCodex ?? HarnessDetection.CodexInstalled;
     private static string Command => GlobalCodexAccess.CurrentCommand;
     private string State => client.StateDirectory;
-    private static IEnumerable<StandardHarness> Targets() => StandardHarnesses.Detect().Append(SpecialHarnesses.Pi());
+    private IReadOnlyList<StandardHarness> StandardTargets() => StandardHarnesses.Detect(detectClaudeDesktopPackage);
+    private IEnumerable<StandardHarness> Targets() => StandardTargets().Append(SpecialHarnesses.Pi());
 
     internal IReadOnlyList<HarnessRow> Inspect()
     {
@@ -42,7 +43,14 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
             codexRow = codex.InspectHarness(installed) with { Detail = UiLanguage.Text("自动修复未完成：", "Automatic repair did not finish: ") + DetailFor(e) };
         }
         var rows = new List<HarnessRow> { codexRow };
-        rows.AddRange(StandardHarnesses.Detect().Select(InspectJson));
+        var standard = StandardTargets();
+        var hasClaudeDesktop = standard.Any(target => target.Id == "claude-desktop");
+        foreach (var target in standard)
+        {
+            var row = InspectJson(target);
+            if (hasClaudeDesktop && target.Id == "claude" && !row.Installed && row.ActionText == "接入") continue;
+            rows.Add(row);
+        }
         try { rows.Add(SpecialHarnesses.InspectDeepSeek(Command, State)); }
         catch (Exception e) when (IsConfigError(e))
         {
@@ -149,7 +157,7 @@ internal sealed class HarnessAccess(EdgeDesktopClient client, Func<bool>? detect
 
     internal void RestoreAntigravity(bool verifyWorkspaces = true)
     {
-        var target = StandardHarnesses.Detect().Single(t => t.Id == "antigravity");
+        var target = StandardTargets().Single(t => t.Id == "antigravity");
         GlobalCodexAccess.WithLock(target.ConfigPath, () =>
         {
             var session = client.Session;

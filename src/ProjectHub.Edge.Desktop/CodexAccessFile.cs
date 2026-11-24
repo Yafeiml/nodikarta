@@ -3,8 +3,12 @@ using System.Text;
 using System.Text.Json;
 using Tomlyn;
 using Tomlyn.Model;
+using Tomlyn.Serialization;
 
 namespace ProjectHub.Edge.Desktop;
+
+[TomlSerializable(typeof(TomlTable))]
+internal partial class CodexToml : TomlSerializerContext;
 
 internal static class CodexAccessFile
 {
@@ -19,14 +23,14 @@ internal static class CodexAccessFile
         // Preserve hashes of existing managed blocks. JSON uses UTF-16 escapes for emoji, which TOML rejects.
         static string Quote(string value)
         {
-            if (!value.Any(char.IsSurrogate)) return JsonSerializer.Serialize(value);
+            if (!value.Any(char.IsSurrogate)) return JsonSerializer.Serialize(value, DesktopJson.Default.String);
             var text = new StringBuilder("\"");
             foreach (var scalar in value.EnumerateRunes())
             {
                 if (!scalar.IsBmp) text.Append(scalar.ToString());
                 else
                 {
-                    var escaped = JsonSerializer.Serialize((char)scalar.Value);
+                    var escaped = JsonSerializer.Serialize((char)scalar.Value, DesktopJson.Default.Char);
                     text.Append(escaped, 1, escaped.Length - 2);
                 }
             }
@@ -97,7 +101,7 @@ internal static class CodexAccessFile
 
     internal static Existing Inspect(string text, LocalBinding binding, string state)
     {
-        var root = TomlSerializer.Deserialize<TomlTable>(text)!;
+        var root = TomlSerializer.Deserialize(text, CodexToml.Default.TomlTable)!;
         if (!root.TryGetValue("mcp_servers", out var value)) return new(UiLanguage.Message("当前目录尚未配置脉络。"));
         if (value is not TomlTable servers) throw new InvalidDataException("mcp_servers 的配置格式不正确。");
         if (!servers.TryGetValue("projecthub", out var entry)) return new(UiLanguage.Message("当前目录尚未配置脉络。"));

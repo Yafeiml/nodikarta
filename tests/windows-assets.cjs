@@ -7,7 +7,7 @@ const {createHash, randomBytes, randomUUID} = require('node:crypto');
 const {deflateSync} = require('node:zlib');
 const {chromium} = require('playwright-core');
 const {docker, visit, setup, login, submit, projectId, openProjectCreation, openDeviceAddition, resetPassword} = require('./core-fixture.cjs');
-const {lines, httpRpc, runExe, handshake, tool} = require('./windows-mcp.cjs');
+const {lines, httpRpc, runExe, handshake, tool, binaryHashes} = require('./windows-mcp.cjs');
 const {publishPosterCase,readPosterCase} = require('./poster-decisions.cjs');
 const {checkProjectRecall,checkDecisionVersions} = require('./project-recall.cjs');
 
@@ -144,7 +144,7 @@ async function main() {
             const priorUse = await checkDecisionVersions(previous,fixture);
             assert.equal(priorUse.currentAdoption,'requiresEvidence');
             assert.ok((await tool(previous,'get_project_snapshot')).items.some(item=>item.commitId===known.commitId));
-            recall.previousEdgeAssemblySha256 = hash(fs.readFileSync(path.join(path.dirname(previousEdge),'ProjectHub.Edge.dll')));
+            recall.previousEdgeBinaries = binaryHashes(previousEdge);
             pass('旧版 Edge 支持中文别称搜索，交付物反查保留原引用，并提示历史用料、文件最新版与新交付的采纳依据；无参快照仍可读取全文');
         }
         await denied(c,'get_asset_decisions',lookup);
@@ -176,7 +176,7 @@ async function main() {
         await denied(b,'download_asset',{...id,destinationPath:'撤销后.png'});
         pass('只读发布被拒绝，另一项目无法访问，网页撤权后已连接客户端随即失去读取和下载权限');
         fs.writeFileSync(evidence,JSON.stringify({checkedAtUtc:new Date().toISOString(),coreImage:docker('inspect','--format','{{.Image}}',container).trim(),
-            edgeAssemblySha256:hash(fs.readFileSync(path.join(path.dirname(exe),'ProjectHub.Edge.dll'))),checks,recall},null,2)+'\n');
+            edgeBinaries:binaryHashes(exe),checks,recall},null,2)+'\n');
     } finally {
         for (const client of clients) client.close();
         await browser.close();

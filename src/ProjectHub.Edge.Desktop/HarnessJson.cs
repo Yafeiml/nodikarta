@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -8,8 +7,7 @@ namespace ProjectHub.Edge.Desktop;
 // Locate the managed value in the original UTF-8 text so even JSONC comments outside it survive an update.
 internal static class HarnessJson
 {
-    private static readonly JsonSerializerOptions Display = new(JsonSerializerOptions.Default)
-        { WriteIndented = true, Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+    private static JsonSerializerOptions Display => DesktopJson.Display.Options;
 
     internal static string Copy(StandardHarness target, string command, string state) =>
         Wrap(target.ServerPath.Append("projecthub"), target.Entry(command, state)).ToJsonString(Display);
@@ -47,7 +45,7 @@ internal static class HarnessJson
                 if (edit != HarnessEdit.Connect) return text;
                 var indent = new string(' ', 2 * (depth + 1));
                 var entry = Wrap(path.Skip(depth + 1), desired);
-                var newProperty = newline + indent + JsonSerializer.Serialize(path[depth]) + ": " +
+                var newProperty = newline + indent + JsonSerializer.Serialize(path[depth], DesktopJson.Default.String) + ": " +
                     entry.ToJsonString(Display).ReplaceLineEndings(newline + indent) +
                     (previousEnd >= 0 ? "," : newline + new string(' ', 2 * depth));
                 return Splice(input, afterBrace, afterBrace, newProperty);
@@ -75,7 +73,7 @@ internal static class HarnessJson
                 FindProperty(ref arguments, field, out _, out _);
                 for (var i = 0; i <= index; i++) arguments.Read();
                 var migrated = Splice(input, start + (int)arguments.TokenStartIndex, start + (int)arguments.BytesConsumed,
-                    JsonSerializer.Serialize(state, Display));
+                    JsonSerializer.Serialize(state, DesktopJson.Display.String));
                 return Inspect(target, migrated, command, state, out action, HarnessEdit.Repair);
             }
             var serverEntry = current as JsonObject;
@@ -121,7 +119,7 @@ internal static class HarnessJson
             if (!FindProperty(ref commandReader, "command", out _, out _)) throw new InvalidDataException("找不到原有启动命令。");
             if (commandReader.TokenType == JsonTokenType.StartArray) commandReader.Read();
             return Splice(input, start + (int)commandReader.TokenStartIndex, start + (int)commandReader.BytesConsumed,
-                JsonSerializer.Serialize(command, Display));
+                JsonSerializer.Serialize(command, DesktopJson.Display.String));
         }
         throw new InvalidDataException("缺少服务器配置路径。");
     }

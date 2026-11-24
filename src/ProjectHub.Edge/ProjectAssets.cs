@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.ComponentModel;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -111,8 +112,9 @@ internal sealed partial class ProjectClient
             content = new byte[(int)input.Length];
             await input.ReadExactlyAsync(content, ct);
         }
-        return await WriteAsync("assets", new { requestId, name, purpose, fileName = Path.GetFileName(relativePath),
-            tags, assetId, baseVersion, content }, ct);
+        return await WriteAsync("assets", new JsonObject { ["requestId"] = requestId, ["name"] = name, ["purpose"] = purpose,
+            ["fileName"] = Path.GetFileName(relativePath), ["tags"] = JsonSerializer.SerializeToNode(tags, EdgeJson.Default.StringArray),
+            ["assetId"] = assetId, ["baseVersion"] = baseVersion, ["content"] = Convert.ToBase64String(content) }, ct);
     }
 
     internal async Task<byte[]> AssetContentAsync(JsonElement meta, CancellationToken ct)
@@ -142,6 +144,7 @@ internal sealed partial class ProjectClient
         var bytes = await AssetContentAsync(meta, ct);
         using var destination = new AssetWorkspace(row.LocalPath, destinationPath, createParents: true);
         await destination.SaveAsync(bytes, ct);
-        return new { assetId, version, relativePath = destination.RelativePath, size = bytes.Length, sha256 = meta.GetProperty("sha256").GetString() };
+        return new JsonObject { ["assetId"] = assetId, ["version"] = version, ["relativePath"] = destination.RelativePath,
+            ["size"] = bytes.Length, ["sha256"] = meta.GetProperty("sha256").GetString() };
     }
 }

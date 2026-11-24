@@ -9,7 +9,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {DatabaseSync} = require('node:sqlite');
 const {setTimeout: delay} = require('node:timers/promises');
-const {lines, handshake, tool, httpRpc} = require('./windows-mcp.cjs');
+const {lines, handshake, tool, httpRpc, binaryHashes} = require('./windows-mcp.cjs');
 
 async function until(check, reason) {
     const end = Date.now() + 15000;
@@ -178,8 +178,8 @@ async function run() {
         assert(!requests.some(r=>r.phase==='second-sync' && r.method==='POST'),'drained outbox was submitted again');
         const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
         const checks={checkedAtUtc:new Date().toISOString(),...(archive && {archive:path.basename(archive),zipSha256:hash(archive)}),
-            desktopDllSha256:hash(path.join(path.dirname(desktop),'ProjectHub.Edge.Desktop.dll')),
-            edgeDllSha256:hash(path.join(path.dirname(cli),'ProjectHub.Edge.dll')),legacyEdgeDllSha256:hash(path.join(path.dirname(legacy),'ProjectHub.Edge.dll')),
+            desktopBinaries:binaryHashes(desktop),
+            edgeBinaries:binaryHashes(cli),legacyEdgeBinaries:binaryHashes(legacy),
             plainReads:{gui:reads('gui').find(r=>r.headers.entry==='gui').headers,cli:reads('cli')[0].headers,
                 background:reads('after-restart').find(r=>r.headers.entry==='background').headers},
             simultaneousWritesAtCore:{stdio:barriers[0].peak,sharedHttpListener:barriers[1].peak},parallelClients:[alpha,beta],

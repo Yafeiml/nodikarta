@@ -10,7 +10,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {chromium} = require('playwright-core');
 const {windows,docker,login,resetPassword,projectId,visit,openDeviceAddition,submit} = require('./core-fixture.cjs');
-const {runExe,lines,tool,handshake} = require('./windows-mcp.cjs');
+const {runExe,lines,tool,handshake,binaryHashes} = require('./windows-mcp.cjs');
 
 async function run() {
     const [exeFile,base,container,output,archive]=process.argv.slice(2);
@@ -102,7 +102,7 @@ async function run() {
         mkdirSync(path.dirname(output),{recursive:true});
         const packageInfo=archive?{name:path.basename(archive),sha256:createHash('sha256').update(readFileSync(archive)).digest('hex'),
             executableSha256:createHash('sha256').update(readFileSync(exe)).digest('hex')}:null;
-        writeFileSync(output,JSON.stringify({checkedAtUtc:new Date().toISOString(),container,checks,autoSync,package:packageInfo},null,2)+'\n');
+        writeFileSync(output,JSON.stringify({checkedAtUtc:new Date().toISOString(),container,checks,autoSync,edgeBinaries:binaryHashes(exe),package:packageInfo},null,2)+'\n');
         checks.forEach(c=>console.log('PASS',c));
     } finally {
         worker?.kill();
