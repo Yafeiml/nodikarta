@@ -1,9 +1,10 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="src/ProjectHub.Core/wwwroot/brand-mark.svg">
-  <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="64" height="64" alt="Nodicarta">
-</picture>
-
-# Nodicarta
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="src/ProjectHub.Core/wwwroot/brand-mark.svg">
+    <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="40" height="40" align="top" alt="">
+  </picture>
+  Nodicarta
+</h1>
 
 English · [简体中文](README.zh-CN.md) · [Quick start](#getting-started)
 

@@ -1,9 +1,10 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="src/ProjectHub.Core/wwwroot/brand-mark.svg">
-  <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="64" height="64" alt="脉络 Nodicarta">
-</picture>
-
-# 脉络 · Nodicarta
+<h1 align="center">
+  <picture>
+    <source media="(max-width: 350px) and (prefers-color-scheme: dark)" width="16" height="16" srcset="src/ProjectHub.Core/wwwroot/brand-mark.svg">
+    <source media="(max-width: 350px) and (prefers-color-scheme: light)" width="16" height="16" srcset="src/ProjectHub.Edge.Desktop/Assets/edge.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="src/ProjectHub.Core/wwwroot/brand-mark.svg">
+    <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="40" height="40" align="absmiddle" alt=""></picture>&hairsp;脉络 · Nodicarta
+</h1>
 
 [English](README.md) · 简体中文 · [快速安装](#开始使用)
 
