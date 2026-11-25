@@ -154,8 +154,6 @@ try
     Directory.Delete(Path.GetDirectoryName(Path.GetDirectoryName(oldExe)!)!, recursive: true);
     GlobalCodexAccess.RefreshManagedCommand(installRoot, newExe, globals, client.StateDirectory);
     Check(File.ReadAllText(globals) == oldConfig && !service.RepairMissingCommand(), "other Edge state cannot adopt a missing target");
-    GlobalCodexAccess.RefreshManagedCommand(installRoot, newExe, globals, alternateState);
-    Check(File.ReadAllText(globals) == refreshed, "installer repairs a missing old release from the same state");
     File.WriteAllText(globals, oldConfig);
     Check(moved.RepairMissingCommand() && !moved.RepairMissingCommand() && File.ReadAllText(globals) == refreshed,
         "repair detects a removed parent directory, preserves the user config and is idempotent");
@@ -188,71 +186,59 @@ try
     var managedRoot = Directory.CreateDirectory(Path.Combine(tmp.FullName, "normal installation")).FullName;
     var stable = Path.Combine(managedRoot, "ProjectHub.Edge.exe");
     File.WriteAllText(stable, "test launcher");
+    File.WriteAllBytes(Path.Combine(managedRoot, ".edge-lease"), []);
     string Publish(string contents)
     {
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contents)));
         var launcherHash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(stable)));
-        var manifest = hash + "  ProjectHub.Edge.exe\r\n" + launcherHash + "  Nodicarta.Edge.Launcher.exe\r\n";
-        var id = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(manifest)))[..12].ToLowerInvariant();
-        var release = Path.Combine(managedRoot, id);
-        var bin = Directory.CreateDirectory(Path.Combine(release, "bin")).FullName;
-        File.WriteAllText(Path.Combine(release, "SHA256SUMS"), manifest);
-        File.Copy(stable, Path.Combine(bin, "Nodicarta.Edge.Launcher.exe"));
-        var path = Path.Combine(bin, "ProjectHub.Edge.exe");
-        File.WriteAllText(path, contents);
-        File.WriteAllText(Path.Combine(managedRoot, "active-release"), id);
-        return path;
+        var manifest = $"{hash}  {ReleasePackage.Desktop}\n{hash}  {ReleasePackage.NativeCli}\n{launcherHash}  {ReleasePackage.Cli}\n";
+        File.WriteAllText(Path.Combine(managedRoot, "SHA256SUMS"), manifest);
+        File.WriteAllText(Path.Combine(managedRoot, ReleasePackage.Desktop), contents);
+        File.WriteAllText(Path.Combine(managedRoot, ReleasePackage.NativeCli), contents);
+        return stable;
     }
     var firstRelease = Publish("installed version 1");
+    Check(firstRelease == stable && EdgeInstallCommand.DesktopEntry(Path.Combine(managedRoot, ReleasePackage.Desktop)) == stable,
+        "the flat runtime uses the fixed root command");
     var nextRelease = Publish("installed version 2");
     var normal = new GlobalCodexAccess(new EdgeDesktopClient(alternateState), codex, profile, nextRelease);
     string InstalledConfig(string path) => existingText + CodexAccessFile.Format(path, ["mcp-stdio-global", "--state", alternateState], [], true) + "\r\n";
-    var oldInstalledConfig = InstalledConfig(firstRelease);
-    File.WriteAllText(globals, oldInstalledConfig, new UTF8Encoding(true));
-    Check(normal.InspectHarness(true) is { IsConnected: true, CanDisconnect: true, CanBatchInstall: false },
-        "an available previous release in the same verified installation is already connected");
+    File.WriteAllText(globals, oldConfig, new UTF8Encoding(true));
     GlobalCodexAccess.RefreshManagedCommand(managedRoot, nextRelease, globals, client.StateDirectory);
-    Check(File.ReadAllText(globals) == oldInstalledConfig, "upgrading a different state does not take over this profile");
+    Check(File.ReadAllText(globals) == oldConfig, "upgrading a different state does not take over this profile");
     GlobalCodexAccess.RefreshManagedCommand(managedRoot, nextRelease, globals, alternateState);
-    Check(File.ReadAllText(globals).ReplaceLineEndings("\n") == InstalledConfig(stable).ReplaceLineEndings("\n") &&
-        File.Exists(firstRelease) && File.ReadAllBytes(globals).AsSpan().StartsWith(Encoding.UTF8.Preamble),
-        "installer migrates live old registration to the stable launcher and preserves the TOML and BOM");
     var stableBytes = File.ReadAllBytes(globals);
+    Check(File.ReadAllText(globals).ReplaceLineEndings("\n").Contains(CodexAccessFile.Format(stable, ["mcp-stdio-global", "--state", alternateState], [], true, EdgeAccessSetup.LegacyServerName)) &&
+        stableBytes.AsSpan().StartsWith(Encoding.UTF8.Preamble), "refresh repairs a missing managed command and preserves BOM");
     var thirdRelease = Publish("installed version 3");
     GlobalCodexAccess.RefreshManagedCommand(managedRoot, thirdRelease, globals, alternateState);
-    Check(!normal.RepairMissingCommand() && stableBytes.SequenceEqual(File.ReadAllBytes(globals)),
-        "another ordinary upgrade keeps the exact same registered configuration");
-    File.WriteAllText(globals, oldInstalledConfig);
-    await normal.ConnectHarnessAsync(default);
-    Check(File.ReadAllText(globals).ReplaceLineEndings("\n") == InstalledConfig(stable).ReplaceLineEndings("\n"),
-        "direct client connection also migrates a live previous release");
+    Check(normal.InspectHarness(true) is { IsConnected: true, CanDisconnect: true, CanBatchInstall: false } &&
+        !normal.RepairMissingCommand() && stableBytes.SequenceEqual(File.ReadAllBytes(globals)),
+        "switching to another verified release keeps the fixed registration byte-for-byte");
     normal.DisconnectHarness();
     var disconnected = File.ReadAllBytes(globals);
     GlobalCodexAccess.RefreshManagedCommand(managedRoot, thirdRelease, globals, alternateState);
     Check(!normal.RepairMissingCommand() && disconnected.SequenceEqual(File.ReadAllBytes(globals)),
         "upgrading a disconnected client does not add a registration");
-    var pointer = Path.Combine(managedRoot, "active-release");
-    var originalPointer = File.ReadAllBytes(pointer);
+    var manifestPath = Path.Combine(managedRoot, "SHA256SUMS");
+    var originalManifest = File.ReadAllBytes(manifestPath);
     var launcherBytes = File.ReadAllBytes(stable);
-    foreach (var fault in new[] { "trailing newline", "missing pointer", "changed launcher" })
+    foreach (var fault in new[] { "invalid manifest", "missing manifest", "changed launcher" })
     {
-        if (fault == "trailing newline") File.AppendAllText(pointer, "\r\n");
-        else if (fault == "missing pointer") File.Delete(pointer);
+        if (fault == "invalid manifest") File.AppendAllText(manifestPath, "invalid\r\n");
+        else if (fault == "missing manifest") File.Delete(manifestPath);
         else File.WriteAllText(stable, "unexpected executable");
         var reopened = new GlobalCodexAccess(new EdgeDesktopClient(alternateState), codex, profile, thirdRelease);
-        foreach (var entry in new[] { firstRelease, stable })
+        var keep = InstalledConfig(stable);
+        File.WriteAllText(globals, keep);
+        foreach (var view in new[] { normal, reopened })
         {
-            var keep = InstalledConfig(entry);
-            File.WriteAllText(globals, keep);
-            foreach (var view in new[] { normal, reopened })
-            {
-                Check(view.InspectHarness(true) is { ActionText: "待核对", CanInstall: false } &&
-                    !view.RepairMissingCommand(), $"{fault}: a running and a reopened client preserve the registration");
-            }
-            GlobalCodexAccess.RefreshManagedCommand(managedRoot, thirdRelease, globals, alternateState);
-            Check(File.ReadAllText(globals) == keep, $"{fault}: neither installer nor automatic repair moved the target");
+            Check(view.InspectHarness(true) is { ActionText: "待核对", CanInstall: false } &&
+                !view.RepairMissingCommand(), $"{fault}: a running and a reopened client preserve the registration");
         }
-        File.WriteAllBytes(pointer, originalPointer);
+        GlobalCodexAccess.RefreshManagedCommand(managedRoot, thirdRelease, globals, alternateState);
+        Check(File.ReadAllText(globals) == keep, $"{fault}: neither installer nor automatic repair moved the target");
+        File.WriteAllBytes(manifestPath, originalManifest);
         File.WriteAllBytes(stable, launcherBytes);
     }
     File.WriteAllBytes(globals, [0xff, 0x9f]);

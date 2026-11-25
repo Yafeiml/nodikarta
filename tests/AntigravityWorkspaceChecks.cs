@@ -53,9 +53,21 @@ try
         "--bound-workspace", binding.WorkspaceId.ToString("D"))), "workspace-pinned command");
     var instructions = File.ReadAllText(guide);
     Check(instructions.Contains("trigger: always_on") && instructions.Contains("nodicarta_" + serverKey)
-        && instructions.Contains("search_project_knowledge"), "Antigravity automatically receives a generic retrieval rule");
+        && instructions.Contains("search_project_knowledge") && instructions.Contains(McpHost.ProjectMemoryInstructions.ReplaceLineEndings("\n")),
+        "Antigravity automatically receives workspace retrieval and handoff guidance");
     var installedConfig = File.ReadAllBytes(config);
     var installedGuide = File.ReadAllBytes(guide);
+    var oldGuide = Encoding.UTF8.GetBytes("---\ntrigger: always_on\n---\nThe active Nodicarta MCP server for this workspace is `nodicarta_" + serverKey
+        + "`. This name supersedes older workspace server names in retrieval instructions. For questions about earlier project work, design choices, or shared assets, invoke its `search_project_knowledge` tool and follow the evidence for the relevant decision.\n");
+    var receiptPath = Path.Combine(state, "antigravity-project-plugins", binding.WorkspaceId.ToString("D") + ".nodicarta.json");
+    var receipt = JsonSerializer.Deserialize(File.ReadAllBytes(receiptPath), EdgeJson.Default.Receipt)!;
+    var oldHashes = receipt.Hashes.ToArray();
+    oldHashes[1] = Convert.ToHexString(SHA256.HashData(oldGuide));
+    File.WriteAllBytes(guide, oldGuide);
+    File.WriteAllBytes(receiptPath, JsonSerializer.SerializeToUtf8Bytes(receipt with { Hashes = oldHashes }, EdgeJson.Default.Receipt));
+    Apply(cli);
+    Check(File.ReadAllBytes(config).SequenceEqual(installedConfig) && File.ReadAllBytes(guide).SequenceEqual(installedGuide),
+        "refresh an earlier owned rule without changing its MCP configuration");
     Apply(cli);
     Check(File.ReadAllBytes(config).SequenceEqual(installedConfig) && File.ReadAllBytes(guide).SequenceEqual(installedGuide), "idempotent setup");
     Apply(updated);
@@ -82,6 +94,9 @@ try
     var addedLater = Path.Combine(plugin, "user-file.txt");
     File.WriteAllText(addedLater, "Keep this");
     File.AppendAllText(guide, "\nUser edit");
+    Attempt(() => Apply(updated));
+    Check(File.ReadAllText(guide).EndsWith("\nUser edit") && Entry()["command"]?.GetValue<string>() == cli,
+        "preserve a customized managed rule and its existing MCP configuration");
     Attempt(Remove);
     Check(File.ReadAllText(guide).EndsWith("\nUser edit") && File.ReadAllText(addedLater) == "Keep this"
         && !File.Exists(config) && !File.Exists(manifest), "retain user edits and remove only managed plugin files");

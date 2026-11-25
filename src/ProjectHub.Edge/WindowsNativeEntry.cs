@@ -6,10 +6,9 @@ namespace ProjectHub.Edge;
 
 internal static class WindowsNativeEntry
 {
-    // The installed 1.0.x launcher already calls this C ABI. Keep the CLI in its
-    // caller's process: STDIO pipes, working directory and MCP cancellation belong to it.
-    [UnmanagedCallersOnly(EntryPoint = "hostfxr_main_startupinfo", CallConvs = [typeof(CallConvCdecl)])]
-    internal static int Run(int argc, nint argv, nint host, nint root, nint assembly)
+    // Keep the CLI and its STDIO pipes in the process started by the client.
+    [UnmanagedCallersOnly(EntryPoint = "nodicarta_edge_run_cli", CallConvs = [typeof(CallConvCdecl)])]
+    internal static int Run(int argc, nint argv)
     {
         try
         {

@@ -5,6 +5,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
 using ProjectHub.Edge;
 
 // dotnet run --file tests/McpListenerChecks.cs -- <Edge.exe>
@@ -22,14 +23,27 @@ Process Start(string dir, params string[] transport)
 {
     var start = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true,
         RedirectStandardInput = true, RedirectStandardError = true, RedirectStandardOutput = true };
-    foreach (var arg in transport.Concat(["--state", dir, "--project", project.ToString(),
-        "--binding", binding.ToString(), "--workspace", workspace.ToString()])) start.ArgumentList.Add(arg);
+    foreach (var arg in transport.Concat(["--state", dir])) start.ArgumentList.Add(arg);
+    if (transport[0] != "mcp-stdio-global")
+        foreach (var arg in new[] { "--project", project.ToString(), "--binding", binding.ToString(),
+            "--workspace", workspace.ToString() }) start.ArgumentList.Add(arg);
     start.Environment["PROJECTHUB_MCP_TOKEN"] = Guid.NewGuid().ToString("N");
     var process = Process.Start(start)!;
     children.Add(process);
     return process;
 }
 static void Check(bool value, string message) { if (!value) throw new Exception(message); }
+static async Task<string> Initialize(Process process)
+{
+    const string initialize = """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"nodicarta-fixture","version":"1"}}}""";
+    await process.StandardInput.WriteLineAsync(initialize);
+    var reply = await process.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(10));
+    using var response = JsonDocument.Parse(reply ?? throw new Exception("MCP host closed during initialize."));
+    var result = response.RootElement.GetProperty("result");
+    Check(result.GetProperty("protocolVersion").GetString() == "2025-11-25" &&
+        result.GetProperty("serverInfo").GetProperty("name").GetString() == "nodicarta", "MCP initialize must retain server identity and protocol.");
+    return result.GetProperty("instructions").GetString()!;
+}
 async Task Wait(string dir, params int?[] ports)
 {
     for (int i = 0; i < 100; i++)
@@ -60,6 +74,15 @@ try
     var b = Start(state, "mcp-stdio");
     await Wait(state, null, null, port);
     await Wait(other);
+    var guidance = await Initialize(a);
+    var global = Start(other, "mcp-stdio-global");
+    Check(await Initialize(global) == guidance && guidance.Contains("nodicarta-context") && guidance.Contains("nodicarta-sync") &&
+        guidance.Contains("before replying") && guidance.Contains("approved for that audience and channel") &&
+        guidance.Contains("brief stand-up or handoff summary") && guidance.Contains("wording-only work on supplied material") &&
+        guidance.Contains("read-only, local-only, or do-not-record") && guidance.Contains("actual receipt"),
+        "Both bound and global MCP initialize must carry the same evidence, handoff, and permission guidance.");
+    global.StandardInput.Close();
+    await global.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
     a.StandardInput.Close();
     await a.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
     await Wait(state, null, port);
@@ -72,7 +95,7 @@ try
     await Wait(state);
     File.WriteAllText(Path.Combine(state, $"mcp-live.{Guid.NewGuid():N}.{port}.{project:N}.{binding:N}.{workspace:N}.{Guid.Empty:N}.lease"), "");
     await Wait(state);
-    Console.WriteLine("PASS: actual HTTP bind, unrelated port owner, two STDIO hosts, state isolation, graceful EOF, abrupt exit and stale lease.");
+    Console.WriteLine("PASS: actual HTTP bind, bound and global STDIO initialize, state isolation, graceful EOF, abrupt exit and stale lease.");
 }
 finally
 {

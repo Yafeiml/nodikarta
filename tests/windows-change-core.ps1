@@ -11,7 +11,7 @@ function EnterInDialog($id, $text) {
     $field.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($text)
 }
 $testFolder = [IO.Directory]::CreateDirectory((Join-Path $root 'old-core-folder')).FullName
-$null = & $cli --state $state bind --project $ProjectId --path $testFolder
+& $cli --state $state bind --project $ProjectId --path $testFolder | Out-Null
 if ($LASTEXITCODE) { throw 'Failed to prepare original folder binding' }
 Click $main 'ManageCoreConnection'
 $dialog = Wait-Ui 'Core address dialog' { CoreDialog }

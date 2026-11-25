@@ -10,14 +10,22 @@ param(
     [switch]$TestChannel
 )
 $ErrorActionPreference = 'Stop'
-if ($Desktop -or $NativeAot) {
+$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+if ($Desktop) {
+    $NativeAot = $true
+    if (!$Version) {
+        [xml]$desktopProject = Get-Content -Raw -LiteralPath (Join-Path $repo 'src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj')
+        $Version = [Version]@($desktopProject.Project.PropertyGroup.Version | Where-Object { $_ })[0]
+    }
+}
+if ($NativeAot) {
     $gcc = $null
     $compilers = @(Get-Command gcc.exe -CommandType Application -All -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source)
     # GitHub's Windows image also ships a 32-bit toolchain.
     foreach ($path in ($compilers + "${env:SystemDrive}\mingw64\bin\gcc.exe" | Select-Object -Unique)) {
         if (![IO.File]::Exists($path)) { continue }
         $resources = Join-Path (Split-Path $path) 'windres.exe'
-        if ((& $path -dumpmachine) -eq 'x86_64-w64-mingw32' -and (!$NativeAot -or [IO.File]::Exists($resources))) {
+        if ((& $path -dumpmachine) -eq 'x86_64-w64-mingw32' -and [IO.File]::Exists($resources)) {
             $gcc = $path
             $windres = $resources
             break
@@ -43,7 +51,6 @@ if ($UpdateFeed -or $PublisherPublicKey -or $TestChannel) {
     $properties += "-p:NodicartaUpdateFeed=$($UpdateFeed.AbsoluteUri)", "-p:NodicartaUpdatePublicKey=$PublisherPublicKey",
         "-p:NodicartaUpdateTestChannel=$($TestChannel.IsPresent.ToString().ToLowerInvariant())", '-p:DebugType=None', '-p:DebugSymbols=false'
 }
-$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 if ($NativeAot) {
     $work = [IO.Directory]::CreateTempSubdirectory('nodicarta-aot-').FullName
     try {
@@ -75,17 +82,15 @@ if ($NativeAot) {
         }
         $hostSources = Join-Path $repo 'src/ProjectHub.Edge.Launcher'
         $iconDir = Join-Path $repo 'src/ProjectHub.Edge.Desktop/Assets'
-        $resource = Join-Path $work 'cli-resources.o'
+        $resource = Join-Path $work 'launcher-resources.o'
         # windres re-parses -I paths when running the preprocessor and splits paths containing spaces.
         Push-Location -LiteralPath $iconDir
         try {
-            & $windres "-DEDGE_VERSION_NUMBER=$($Version.Major),$($Version.Minor),$($Version.Build),0" ('-DEDGE_VERSION_TEXT=\"' + $Version + '\"') (Join-Path $hostSources 'windows-cli.rc') $resource
-            if ($LASTEXITCODE) { throw 'Native CLI version/icon resource compilation failed.' }
+            & $windres (Join-Path $hostSources 'windows-cli.rc') $resource
+            if ($LASTEXITCODE) { throw 'Edge launcher resource compilation failed.' }
         } finally { Pop-Location }
-        & $gcc -std=c11 -Os -municode -s -DNODICARTA_PORTABLE_CLI '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'windows.c') $resource -o (Join-Path $bin 'ProjectHub.Edge.exe')
-        if ($LASTEXITCODE) { throw 'Native CLI entry compilation failed.' }
-        & $gcc -std=c11 -Os -shared -s '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'compat-hostfxr.c') -o (Join-Path $bin 'hostfxr.dll')
-        if ($LASTEXITCODE) { throw 'Native CLI compatibility library compilation failed.' }
+        & $gcc -std=c11 -Os -municode -mwindows -s '-Wl,--no-insert-timestamp' (Join-Path $hostSources 'windows.c') $resource -o (Join-Path $bin 'ProjectHub.Edge.exe') -lshell32
+        if ($LASTEXITCODE) { throw 'Native Edge launcher compilation failed.' }
     } finally {
         $tempRoot = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetFullPath([IO.Path]::GetTempPath()))
         $stagedWork = Get-Item -LiteralPath $work -Force
@@ -99,22 +104,29 @@ if ($NativeAot) {
 }
 if ($Desktop) {
     if ($UpdateFeed) {
-        foreach ($notice in 'LICENSE','THIRD-PARTY-NOTICES.md') { Copy-Item -LiteralPath (Join-Path $repo $notice) -Destination $bin }
-        $licenseDir = Join-Path $repo 'release/licenses'
-        if (!@(Get-ChildItem -LiteralPath (Join-Path $licenseDir 'edge') -Recurse -File).Count) { throw 'Edge dependency licenses are missing.' }
-        $releaseDocs = [IO.Directory]::CreateDirectory((Join-Path $bin 'release')).FullName
-        Copy-Item -LiteralPath $licenseDir -Destination $releaseDocs -Recurse
-        foreach ($guide in 'WINDOWS_EDGE_DESKTOP.md','WINDOWS_EDGE_DESKTOP.en.md') {
-            Copy-Item -LiteralPath (Join-Path $repo "docs/operations/$guide") -Destination $bin
+        $licenseDir = Join-Path $repo 'release/licenses/edge'
+        $licenseFiles = @(Get-ChildItem -LiteralPath $licenseDir -Recurse -File | Sort-Object FullName)
+        if (!$licenseFiles.Count) { throw 'Edge dependency licenses are missing.' }
+        $notices = @((Join-Path $repo 'LICENSE'),(Join-Path $repo 'THIRD-PARTY-NOTICES.md'),
+            (Join-Path $repo 'src/ProjectHub.Edge.Desktop/Assets/Harnesses/NOTICE.txt')) + $licenseFiles.FullName
+        $utf8 = [Text.UTF8Encoding]::new($false, $true)
+        $sections = foreach ($notice in $notices) {
+            '===== ' + [IO.Path]::GetRelativePath($repo, $notice).Replace('\','/') + ' ====='
+            try { [IO.File]::ReadAllText($notice, $utf8) }
+            catch [Text.DecoderFallbackException] {
+                if ([IO.Path]::GetFileName($notice) -cne 'NSIS-ModernUI-LICENSE.txt') { throw }
+                [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
+                [IO.File]::ReadAllText($notice, [Text.Encoding]::GetEncoding(1252))
+            }
+            ''
         }
+        [IO.File]::WriteAllLines((Join-Path $bin 'LICENSES.txt'), [string[]]$sections, $utf8)
         if (@(Get-ChildItem -LiteralPath $bin -Filter '*.pdb' -File -Recurse).Count) { throw 'Public package contains debug symbols.' }
         $keyId = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Convert]::FromBase64String($PublisherPublicKey)))
         $metadata = [ordered]@{releaseLine='public-v1';publisherKeyId=$keyId;channel='stable';rid='win-x64';version=$Version.ToString()}
         [IO.File]::WriteAllText((Join-Path $bin 'nodicarta-release.json'), ($metadata | ConvertTo-Json -Compress))
     }
-    & $gcc -std=c11 -Os -municode -s '-Wl,--no-insert-timestamp' (Join-Path $PSScriptRoot '../../src/ProjectHub.Edge.Launcher/windows.c') -o (Join-Path $bin 'Nodicarta.Edge.Launcher.exe')
-    if ($LASTEXITCODE) { throw 'Edge 启动器构建失败。' }
-    foreach ($file in 'Install-EdgeDesktop.ps1','Test-EdgeRelease.ps1','Edge-ActiveRelease.ps1','User-Dispatch.ps1','Edge-StatePaths.ps1') {
+    foreach ($file in 'Install-EdgeDesktop.ps1','Test-EdgeRelease.ps1','User-Dispatch.ps1','Edge-StatePaths.ps1') {
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $package
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../../docs/operations/WINDOWS_EDGE_DESKTOP.md') -Destination (Join-Path $package 'README.md')

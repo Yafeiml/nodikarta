@@ -7,32 +7,50 @@ internal sealed class ReleasePackage
 {
     internal const string Desktop = "ProjectHub.Edge.Desktop.exe";
     internal const string Cli = "ProjectHub.Edge.exe";
-    internal const string Launcher = "Nodicarta.Edge.Launcher.exe";
+    internal const string NativeCli = "NodicartaEdgeCli.dll";
+    internal const string Manifest = "SHA256SUMS";
+    internal const string Lease = ".edge-lease";
+    internal const string Journal = ".nodicarta-install-transaction.json";
+    internal const string Receipt = "public-install.json";
+    internal const string Uninstaller = "Uninstall.exe";
     internal string DirectoryPath { get; }
     internal string Id { get; }
-    internal string Executable => Path.Combine(DirectoryPath, "bin", Desktop);
+    internal string Executable => Path.Combine(DirectoryPath, Desktop);
     private readonly Dictionary<string, string> files = new(StringComparer.OrdinalIgnoreCase);
-    internal static bool IsId(string value) => value.Length == 12 && value.All(char.IsAsciiHexDigitLower);
+    internal IReadOnlyDictionary<string, string> Files => files;
 
-    internal ReleasePackage(string directory, bool validateId)
+    internal ReleasePackage(string directory, bool bundle = false)
     {
-        DirectoryPath = directory;
-        var manifest = Path.Combine(directory, "SHA256SUMS");
+        DirectoryPath = bundle ? Path.Combine(directory, "bin") : directory;
+        var manifest = Path.Combine(directory, Manifest);
         CodexAccessFile.CheckPath(manifest);
+        if (new FileInfo(manifest).Length > 512 * 1024) throw new InvalidDataException("Invalid package manifest.");
         byte[] bytes = File.ReadAllBytes(manifest);
-        Id = Convert.ToHexStringLower(SHA256.HashData(bytes))[..12];
-        if (validateId && Id != Path.GetFileName(directory)) throw new InvalidDataException("Invalid release directory.");
+        Id = Convert.ToHexString(SHA256.HashData(bytes));
         using var reader = new StringReader(Encoding.UTF8.GetString(bytes));
         while (reader.ReadLine() is { } line)
         {
             if (line.Length < 67 || line.Substring(64, 2) != "  " || !line[..64].All(char.IsAsciiHexDigit))
                 throw new InvalidDataException("Invalid package manifest.");
             var file = line[66..];
-            if (file.Split('/').Any(p => p is "" or "." or ".." || p.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) ||
-                !files.TryAdd(file, line[..64])) throw new InvalidDataException("Invalid package file name.");
+            if (!IsRuntimePath(file) || !files.TryAdd(file, line[..64]))
+                throw new InvalidDataException("Invalid package file name.");
         }
-        if (!files.ContainsKey(Desktop) || !files.ContainsKey(Cli))
+        if (!files.ContainsKey(Desktop) || !files.ContainsKey(Cli) || !files.ContainsKey(NativeCli))
             throw new InvalidDataException("The Edge package is incomplete.");
+    }
+
+    private static readonly HashSet<string> Reserved = new(StringComparer.OrdinalIgnoreCase)
+    {
+        Manifest, Lease, Journal, Receipt, Uninstaller, "active-release", "Nodicarta.Edge.Launcher.exe", "hostfxr.dll"
+    };
+
+    internal static bool IsRuntimePath(string path)
+    {
+        var parts = path.Split('/');
+        return !Reserved.Contains(parts[0]) && !parts[0].StartsWith(".nodicarta-install-", StringComparison.OrdinalIgnoreCase) &&
+            parts.All(part => part is not ("" or "." or "..") && !part.EndsWith('.') && !part.EndsWith(' ') &&
+                part.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && !part.Contains('\\') && !part.Contains(':'));
     }
 
     internal static string Hash(string path)
@@ -42,42 +60,36 @@ internal sealed class ReleasePackage
         return Convert.ToHexString(SHA256.HashData(stream));
     }
 
-    internal bool MatchesLauncher(string hash) => files.TryGetValue(Launcher, out var expected) &&
-        string.Equals(expected, hash, StringComparison.OrdinalIgnoreCase);
+    internal static bool Matches(string path, string digest) =>
+        File.Exists(path) && string.Equals(Hash(path), digest, StringComparison.OrdinalIgnoreCase);
 
-    internal bool MatchesCli(string hash) => string.Equals(files[Cli], hash, StringComparison.OrdinalIgnoreCase);
+    internal static bool IsInstalledLauncher(string root, ReleasePackage active) => Matches(Path.Combine(root, Cli), active.files[Cli]);
 
-    internal static IEnumerable<ReleasePackage> Installed(string root)
+    internal void Verify(bool allowMissing = false)
     {
-        foreach (var directory in Directory.EnumerateDirectories(root))
+        foreach (var (name, digest) in files)
         {
-            if (!IsId(Path.GetFileName(directory))) continue;
-            ReleasePackage package;
-            try { package = new ReleasePackage(directory, validateId: true); }
-            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
-            {
-                // A hexadecimal directory name alone does not establish ownership for uninstall.
-                continue;
-            }
-            yield return package;
+            var path = Path.Combine(DirectoryPath, name);
+            CodexAccessFile.CheckPath(path);
+            if ((!allowMissing || File.Exists(path)) && !Matches(path, digest))
+                throw new InvalidDataException("Edge package verification failed: " + path);
         }
     }
 
-    internal void Verify()
+    internal void VerifyBundle()
     {
-        var bin = Path.Combine(DirectoryPath, "bin");
         var seen = 0;
-        foreach (var file in RegularFiles(bin))
+        foreach (var path in RegularFiles(DirectoryPath))
         {
-            string relative = Path.GetRelativePath(bin, file).Replace('\\', '/');
-            if (!files.TryGetValue(relative, out var expected) || !string.Equals(Hash(file), expected, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Edge package verification failed: " + relative);
+            var name = Path.GetRelativePath(DirectoryPath, path).Replace('\\', '/');
+            if (!files.TryGetValue(name, out var digest)) throw new InvalidDataException("Unexpected file in Edge package: " + name);
+            if (!Matches(path, digest)) throw new InvalidDataException("Edge package verification failed: " + path);
             seen++;
         }
         if (seen != files.Count) throw new InvalidDataException("Missing files in Edge package.");
     }
 
-    private static IEnumerable<string> RegularFiles(string directory)
+    internal static IEnumerable<string> RegularFiles(string directory)
     {
         CodexAccessFile.CheckPath(directory);
         foreach (var item in new DirectoryInfo(directory).EnumerateFileSystemInfos())
@@ -91,51 +103,27 @@ internal sealed class ReleasePackage
         }
     }
 
-    internal ReleasePackage InstallInto(string root)
-    {
-        // Older installed releases predate the stable MCP launcher. Only new distributions must contain it.
-        if (!files.ContainsKey(Launcher)) throw new InvalidDataException("Missing the MCP launcher in the new Edge package.");
-        var destination = Path.Combine(root, Id);
-        var existing = Directory.Exists(destination) ? new ReleasePackage(destination, true) : null;
-        if (existing == null || !Directory.Exists(Path.Combine(destination, "bin")))
-        {
-            var stage = Directory.CreateDirectory(Path.Combine(root, Guid.NewGuid().ToString("N") + ".staging")).FullName;
-            try
-            {
-                File.Copy(Path.Combine(DirectoryPath, "SHA256SUMS"), Path.Combine(stage, "SHA256SUMS"));
-                foreach (var name in files.Keys)
-                {
-                    var path = Path.Combine(stage, "bin", name);
-                    Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                    File.Copy(Path.Combine(DirectoryPath, "bin", name), path);
-                }
-                new ReleasePackage(stage, false).Verify();
-                if (existing == null) Directory.Move(stage, destination);
-                else Directory.Move(Path.Combine(stage, "bin"), Path.Combine(destination, "bin"));
-            }
-            finally { if (Directory.Exists(stage)) Directory.Delete(stage, recursive: true); }
-        }
-        var result = new ReleasePackage(destination, true);
-        result.Verify();
-        return result;
-    }
-
-    // Old installations may also hold user archives or local changes. Delete only intact manifest entries.
     internal void RemoveInstalledFiles()
     {
-        var bin = Path.Combine(DirectoryPath, "bin");
-        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { bin };
         foreach (var (relative, digest) in files)
         {
-            var path = Path.Combine(bin, relative);
-            for (var parent = Path.GetDirectoryName(path); parent != null && parent.Length > bin.Length; parent = Path.GetDirectoryName(parent))
-                dirs.Add(parent);
+            var path = Path.Combine(DirectoryPath, relative);
             try
             {
-                if (File.Exists(path) && string.Equals(Hash(path), digest, StringComparison.OrdinalIgnoreCase)) File.Delete(path);
+                if (Matches(path, digest)) File.Delete(path);
             }
             catch (CodexAccessFile.LinkedPathException) { }
         }
+        PruneDirectories(DirectoryPath, files.Keys);
+        File.Delete(Path.Combine(DirectoryPath, Manifest));
+    }
+
+    internal static void PruneDirectories(string root, IEnumerable<string> files)
+    {
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var relative in files)
+            for (var parent = Path.GetDirectoryName(Path.Combine(root, relative)); parent != null && parent.Length > root.Length;
+                parent = Path.GetDirectoryName(parent)) dirs.Add(parent);
         foreach (var path in dirs.OrderByDescending(path => path.Length))
         {
             try
@@ -145,38 +133,55 @@ internal sealed class ReleasePackage
             }
             catch (CodexAccessFile.LinkedPathException) { }
         }
-        // Retain the validated manifest next to any user material so a later reinstall can identify its own directory.
-        var manifest = Path.Combine(DirectoryPath, "SHA256SUMS");
-        if (Directory.EnumerateFileSystemEntries(DirectoryPath).All(path => string.Equals(path, manifest, StringComparison.OrdinalIgnoreCase)))
-        {
-            File.Delete(manifest);
-            if (!Directory.EnumerateFileSystemEntries(DirectoryPath).Any()) Directory.Delete(DirectoryPath);
-        }
     }
 
-    internal static void WriteAtomically(string path, byte[] bytes)
+    internal static void CopyAtomically(string source, string path, string? stage = null)
+    {
+        CodexAccessFile.CheckPath(source);
+        CodexAccessFile.CheckPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Replace(path, stage, stream =>
+        {
+            using var input = File.Open(source, FileMode.Open, FileAccess.Read, FileShare.Read);
+            input.CopyTo(stream);
+        });
+    }
+
+    internal static void WriteAtomically(string path, byte[] bytes, string? stage = null) =>
+        Replace(path, stage, stream => stream.Write(bytes));
+
+    private static void Replace(string path, string? stage, Action<FileStream> write)
     {
         CodexAccessFile.CheckPath(path);
-        var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        var tmp = stage ?? path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        if (stage != null)
+        {
+            CodexAccessFile.CheckPath(stage);
+            Directory.CreateDirectory(Path.GetDirectoryName(stage)!);
+            File.Delete(stage);
+        }
         try
         {
             using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                stream.Write(bytes);
+                write(stream);
                 stream.Flush(flushToDisk: true);
             }
-            File.Move(tmp, path, true);
+            var delay = System.Diagnostics.Stopwatch.StartNew();
+            while (true)
+            {
+                try { File.Move(tmp, path, true); break; }
+                catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33 && delay.ElapsedMilliseconds < 2000)
+                { Thread.Sleep(40); }
+            }
         }
         finally { File.Delete(tmp); }
     }
 
     internal static ReleasePackage? Active(string root)
     {
-        var pointer = Path.Combine(root, "active-release");
-        CodexAccessFile.CheckPath(pointer);
-        if (!File.Exists(pointer)) return null;
-        var id = File.ReadAllText(pointer);
-        if (!IsId(id)) throw new InvalidDataException("Invalid current Edge release.");
-        return new ReleasePackage(Path.Combine(root, id), true);
+        var manifest = Path.Combine(root, Manifest);
+        CodexAccessFile.CheckPath(manifest);
+        return File.Exists(manifest) ? new ReleasePackage(root) : null;
     }
 }

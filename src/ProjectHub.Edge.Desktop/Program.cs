@@ -90,17 +90,13 @@ internal static class Program
             if (instance == null) return 0;
             var previous = DesktopRunRecord.Read();
             var selectedState = requested ?? DefaultStateDirectory;
-            var legacy = LegacyDesktop.Retire(EdgeStatePaths.Normalize(selectedState), background);
-            if (!legacy.Continue) return 0;
             var directory = ResolveDesktopDirectory(selectedState);
-            using var legacyWake = DesktopInstance.OpenLegacyWake(directory, out var first);
-            if (!first) throw DesktopInstance.AnotherSession();
             var client = new EdgeDesktopClient(directory);
             var record = new DesktopRunRecord(executable, directory);
-            return AppBuilder.Configure(() => new App { Client = client, Wake = instance.Wake, LegacyWake = legacyWake,
+            return AppBuilder.Configure(() => new App { Client = client, Wake = instance.Wake,
                     Retire = instance.Retire, Background = background, Started = () =>
                     {
-                        DesktopLocation.UpdateShortcuts(legacy.PreviousExe ?? previous?.Executable, executable);
+                        DesktopLocation.UpdateShortcuts(previous?.Executable, EdgeInstallCommand.DesktopEntry(executable));
                         if (record != previous)
                         {
                             try { record.Save(); }

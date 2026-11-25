@@ -148,7 +148,7 @@ $second = [IO.Directory]::CreateDirectory((Join-Path $root 'another-workspace'))
 $kept = Join-Path $first 'keep.txt'
 [IO.File]::WriteAllText($kept,'keep this file')
 foreach($dir in $first,$second) {
-    $null = & $cli --state $state bind --project $ProjectId --path $dir
+    & $cli --state $state bind --project $ProjectId --path $dir | Out-Null
     if ($LASTEXITCODE) { throw '临时目录绑定失败' }
 }
 Click $main 'RefreshButton'
@@ -221,7 +221,7 @@ Click $dialog 'CancelUnbind'
 $null=Wait-Ui '取消后行可访问' { (UnbindButton $second).Current.IsEnabled }
 $dialog = OpenUnbind $second
 $previous = (& $cli --state $state bindings | ConvertFrom-Json)[0]
-$null = & $cli --state $state unbind --project $ProjectId --workspace $previous.workspaceId --path $second
+& $cli --state $state unbind --project $ProjectId --workspace $previous.workspaceId --path $second | Out-Null
 if ($LASTEXITCODE) { throw '并发解绑准备失败' }
 $replacement = & $cli --state $state bind --project $ProjectId --path $second | ConvertFrom-Json
 if ($LASTEXITCODE -or $replacement.workspaceId -eq $previous.workspaceId) { throw '重新绑定准备失败' }

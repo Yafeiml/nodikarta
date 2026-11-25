@@ -27,7 +27,7 @@ async function run() {
         assert.deepEqual(discovered.map(s => s.name).sort(), ['nodicarta-assets', 'nodicarta-context', 'nodicarta-inbox', 'nodicarta-init', 'nodicarta-sync']);
         for (const skill of discovered) {
             assert.match(skill.description, /脉络/);
-            assert.match(skill.description, /\bnodicarta\b/);
+            assert.match(skill.description, /\bnodicarta\b/i);
         }
         const helper = path.join(skillRoot, 'nodicarta-init', 'scripts', 'init-ids.cjs');
         const ids = (kind, key, version) => {

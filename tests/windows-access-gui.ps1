@@ -31,7 +31,8 @@ $root = (Resolve-Path -LiteralPath $RunRoot).Path
 if ([IO.Path]::GetDirectoryName($root) -ne [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetTempPath()) -or
     [IO.Path]::GetFileName($root) -notmatch '^projecthub-accessqa-[a-f0-9]{32}$') { throw 'A disposable fixture root is required.' }
 $exe = (Resolve-Path -LiteralPath $Executable).Path
-$cli = Join-Path ([IO.Path]::GetDirectoryName($exe)) 'ProjectHub.Edge.exe'
+$payload = [IO.Path]::GetDirectoryName($exe)
+$cli = Join-Path $payload 'ProjectHub.Edge.exe'
 $checks = [Collections.Generic.List[string]]::new()
 function Wait-Ui([string]$name,[scriptblock]$body) {
     $end = [DateTime]::UtcNow.AddSeconds(25)
@@ -443,7 +444,7 @@ foreach ($mode in 'none','readOnly','readWrite') {
         }
         if (AccessWindow) { throw 'Unexpected config editor without a grant and directory.' }
         $workspace = [IO.Directory]::CreateDirectory((Join-Path $root "workspace-$mode")).FullName
-        $null = & $cli --state $state bind --project $ProjectId --path $workspace
+        & $cli --state $state bind --project $ProjectId --path $workspace | Out-Null
         if ($LASTEXITCODE) { throw 'Could not bind disposable directory.' }
         if ($mode -eq 'readWrite' -and $ScreenshotDirectory) {
             Click $main 'RefreshButton'

@@ -82,7 +82,15 @@ internal partial class CoreConnectionWindow : Window
 
     private static string ReadBuildId(System.Reflection.Assembly assembly)
     {
-        var manifest = Path.Combine(AppContext.BaseDirectory, "..", "SHA256SUMS");
+        var parentManifest = Path.Combine(AppContext.BaseDirectory, "..", ReleasePackage.Manifest);
+#if LINUX_DESKTOP
+        var manifest = parentManifest;
+#else
+        var manifest = Path.Combine(AppContext.BaseDirectory, ReleasePackage.Manifest);
+        if (!File.Exists(manifest) && !File.Exists(Path.Combine(AppContext.BaseDirectory, ReleasePackage.Lease)) &&
+            File.Exists(Path.Combine(AppContext.BaseDirectory, ReleasePackage.NativeCli)))
+            manifest = parentManifest;
+#endif
         try
         {
             using var stream = File.OpenRead(manifest);

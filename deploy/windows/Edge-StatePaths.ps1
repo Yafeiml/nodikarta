@@ -22,7 +22,8 @@ function Get-EdgeStatePlan([string]$Path) {
 
 function Invoke-EdgeStateMigration([string]$Cli, $Plan) {
     if (!$Plan.Legacy) { return }
-    $result = & $Cli migrate-default-state --state $Plan.Requested
+    # The Windows desktop entry is a GUI-subsystem executable. A pipeline waits for its CLI output.
+    $result = & $Cli migrate-default-state --state $Plan.Requested | ForEach-Object { $_ }
     if ($LASTEXITCODE -ne 0 -or @($result).Count -ne 1 -or $result -ne $Plan.Path) {
         throw '未能确认默认数据目录迁移完成，请核对原数据和正在运行的 Edge。'
     }

@@ -88,12 +88,6 @@ internal sealed class DesktopInstance : IDisposable
         "这台电脑上已有脉络 Edge 正在运行。请先在原来的 Windows 会话中从托盘退出。",
         "Nodicarta Edge is already running on this PC. Quit it from the tray in the original Windows session."));
 
-    internal static EventWaitHandle OpenLegacyWake(string directory, out bool first)
-    {
-        var key = SHA256.HashData(Encoding.UTF8.GetBytes(directory.ToUpperInvariant()));
-        return new(false, EventResetMode.AutoReset, "ProjectHub.Edge.Desktop." + Convert.ToHexString(key), Session, out first);
-    }
-
     public void Dispose()
     {
         Retire.Dispose();

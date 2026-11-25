@@ -4,7 +4,7 @@ if (!$ScreenshotDirectory) { throw 'Navigation checks require an evidence direct
 . (Join-Path $PSScriptRoot 'WindowsPointerInput.ps1')
 Add-Type -Path (Join-Path $PSScriptRoot 'WindowNavigationProbe.cs')
 $folder = [IO.Directory]::CreateDirectory((Join-Path $root 'navigation workspace')).FullName
-$null = & $cli --state $state bind --project $ProjectId --path $folder
+& $cli --state $state bind --project $ProjectId --path $folder | Out-Null
 if ($LASTEXITCODE) { throw 'Could not bind the fixture directory.' }
 Click $main 'RefreshButton'
 $null = Wait-Ui '临时目录可见' { HasText $main $folder }

@@ -151,6 +151,81 @@ async function run() {
         await expectDiagnostic(rootClient,'changed');
         roots = [desktopUri];
         await expectDiagnostic(rootClient,'changed');
+
+        // Cowork adds its own upload directories after the initial workspace tools have been listed.
+        const coworkName = 'local-agent-mode-nodicarta';
+        const localAppData = path.join(root, 'claude-local-app-data');
+        function uploadsDir(sessionId, leaf) {
+            const directory = path.join(localAppData, 'Claude-3p', 'local-agent-mode-sessions', 'abcd1234', '00000000', sessionId, leaf);
+            fs.mkdirSync(directory,{recursive:true});
+            return directory;
+        }
+        const uploads = uploadsDir('aabbccdd', 'uploads');
+        const uploadsUri = pathToFileURL(uploads).href;
+        const otherUploadsUri = pathToFileURL(uploadsDir('1234abcd', 'UPLOADS')).href;
+        const lookalikeUri = pathToFileURL(uploadsDir('aabbccdd', 'uploads-copy')).href;
+        const unrelatedUploads = path.join(folders.unknown, path.relative(localAppData, uploads));
+        fs.mkdirSync(unrelatedUploads,{recursive:true});
+        async function cowork(initialRoots, name = coworkName) {
+            let currentRoots = initialRoots, notifyCoworkToolsChanged;
+            const client = lines(exe,['mcp-stdio-global','--state',state,'--workspace-roots'],{
+                cwd:folders.unknown, env:{...process.env, LOCALAPPDATA:localAppData}, roots:()=>currentRoots,
+                onToolListChanged:()=>notifyCoworkToolsChanged?.()
+            });
+            clients.push(client);
+            const tools = await handshake(client,{roots:{listChanged:true}},{name,version:'1'});
+            return {client,tools,async change(uris, notify = true) {
+                currentRoots = uris;
+                if (!notify) return;
+                const refreshed = new Promise(resolve=>notifyCoworkToolsChanged=resolve);
+                client.notify({jsonrpc:'2.0',method:'notifications/roots/list_changed'});
+                await Promise.race([refreshed, new Promise((_,reject)=>setTimeout(()=>reject(Error('Cowork tools/list_changed missing')),5000).unref())]);
+            }};
+        }
+        const conversation = await cowork([desktopUri]);
+        assert.ok(conversation.tools.includes('get_project_snapshot'));
+        await conversation.change([desktopUri,uploadsUri]);
+        assert.equal((await tool(conversation.client,'list_projects')).items[0].projectId,b.projectId);
+        await conversation.change([otherUploadsUri,desktopUri,uploadsUri]);
+        assert.deepEqual((await tool(conversation.client,'get_project_snapshot')).source,['mcp',coworkName,'1']);
+        assert.ok(!(await toolNames(conversation.client)).includes('submit_feedback'));
+        await conversation.change([uploadsUri]);
+        assert.deepEqual(await toolNames(conversation.client),['get_edge_status']);
+        assert.equal((await conversation.client.call('tools/call',{name:'get_project_snapshot',arguments:{}})).isError,true);
+        await conversation.change([desktopUri,uploadsUri],false);
+        assert.equal((await tool(conversation.client,'list_projects')).items[0].projectId,b.projectId);
+        assert.ok((await toolNames(conversation.client)).includes('get_project_snapshot'));
+        await conversation.change([]);
+        await expectDiagnostic(conversation.client,'unbound',/尚未提供工作目录/);
+        await conversation.change([desktopUri]);
+        await conversation.change([desktopUri,uploadsUri]);
+        assert.deepEqual((await tool(conversation.client,'get_project_snapshot')).source,['mcp',coworkName,'1']);
+        await conversation.change([],false);
+        assert.equal((await conversation.client.call('tools/call',{name:'get_project_snapshot',arguments:{}})).isError,true);
+        await conversation.change([desktopUri,uploadsUri]);
+        assert.deepEqual((await tool(conversation.client,'get_project_snapshot')).source,['mcp',coworkName,'1']);
+        await conversation.change([desktopUri,uploadsUri,pathToFileURL(folders.alpha).href]);
+        await expectDiagnostic(conversation.client,'changed');
+        await conversation.change([desktopUri,uploadsUri]);
+        await expectDiagnostic(conversation.client,'changed');
+        const switchedConversation = await cowork([desktopUri]);
+        await switchedConversation.change([pathToFileURL(folders.alpha).href,uploadsUri],false);
+        assert.equal((await switchedConversation.client.call('tools/call',{name:'list_projects',arguments:{}})).isError,true);
+        await switchedConversation.change([desktopUri,uploadsUri]);
+        await expectDiagnostic(switchedConversation.client,'changed');
+        for (const [uris,name,message] of [
+            [[uploadsUri,otherUploadsUri],coworkName,/尚未提供工作目录/],
+            [[desktopUri,lookalikeUri],coworkName,/多个不同的工作目录/],
+            [[desktopUri,pathToFileURL(unrelatedUploads).href],coworkName,/多个不同的工作目录/],
+            [[desktopUri,uploadsUri],'roots-client',/多个不同的工作目录/]
+        ]) {
+            const {client} = await cowork(uris,name);
+            await expectDiagnostic(client,'unbound',message);
+        }
+        await bind(a,uploads);
+        const {client:boundUploadsClient} = await cowork([desktopUri,uploadsUri]);
+        await expectDiagnostic(boundUploadsClient,'unbound',/多个不同的工作目录/);
+
         assert.deepEqual((await tool(sub,'get_project_snapshot')).filters,{});
         assert.deepEqual((await tool(sub,'get_project_snapshot',{task:''})).filters,{view:'brief'});
         const task = '接着处理上次的海报 & 黑白印刷 #2';
@@ -322,6 +397,7 @@ async function run() {
         console.log('PASS: exact offline unbind, revoked local records, real files kept, scoped policy removal, cross-project rebind and stale global, fixed HTTP and legacy STDIO clients denied after same-project rebind.');
         console.log('PASS: simultaneous project sessions, Windows path boundaries and aliases, conflict isolation, live directory policy, workspace endpoints, permission downgrade, revocation and regrant.');
         console.log('PASS: Antigravity encoded drive and Chinese folder, equivalent roots, distinct missing, multiple, unsupported and unbound diagnostics, pinned session isolation.');
+        console.log('PASS: Claude Cowork recovers the same workspace after temporary root absence and denies ambiguous or changed workspaces.');
         console.log('PASS: Antigravity Desktop scoped STDIO query, copied configuration denied, open connection revoked, stale registration denied after rebinding.');
     } finally {
         for (const client of clients) client.close();

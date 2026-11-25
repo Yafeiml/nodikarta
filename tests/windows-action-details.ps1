@@ -1,6 +1,6 @@
 # Exercise the visible controls on the disposable desktop instance with real pointer and keyboard input.
 $workspace = [IO.Directory]::CreateDirectory((Join-Path $root 'ProjectHub')).FullName
-$null = & $cli --state $state bind --project $ProjectId --path $workspace
+& $cli --state $state bind --project $ProjectId --path $workspace | Out-Null
 if ($LASTEXITCODE) { throw 'Could not bind the disposable workspace.' }
 Click $main 'RefreshButton'
 $null = Wait-Ui '目录已绑定' { HasText $main $workspace }

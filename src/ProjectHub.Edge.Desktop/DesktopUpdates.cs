@@ -16,7 +16,7 @@ internal sealed class DesktopUpdates
     private static readonly JsonDocumentOptions StrictJson = new() { AllowDuplicateProperties = false, MaxDepth = 8 };
     private static readonly HttpClient Network = new(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
         { Timeout = Timeout.InfiniteTimeSpan };
-    private readonly string root, build;
+    private readonly string root;
     private readonly Version current;
     private readonly Uri feed;
     private readonly byte[] publicKey;
@@ -24,10 +24,9 @@ internal sealed class DesktopUpdates
     private readonly HttpClient http;
     private DesktopUpdateRelease? verified;
 
-    private DesktopUpdates(string root, string build, Version current, Uri feed, byte[] publicKey, bool testChannel, HttpClient http)
+    private DesktopUpdates(string root, Version current, Uri feed, byte[] publicKey, bool testChannel, HttpClient http)
     {
         this.root = root;
-        this.build = build;
         this.current = current;
         this.feed = feed;
         this.publicKey = publicKey;
@@ -51,12 +50,10 @@ internal sealed class DesktopUpdates
             !TryVersion(version, out var current) || !string.IsNullOrEmpty(feed.Query) ||
             !feed.AbsolutePath.EndsWith("/nodicarta-edge-stable-win-x64.json", StringComparison.Ordinal)) return null;
         var file = new FileInfo(executable);
-        var release = file.Directory?.Parent;
-        if (file.Name != "ProjectHub.Edge.Desktop.exe" || file.Directory?.Name != "bin" || release?.Parent == null ||
-            release.Name.Length != 12 || !release.Name.All(char.IsAsciiHexDigitLower)) return null;
+        if (file.Name != ReleasePackage.Desktop || file.DirectoryName == null) return null;
         try
         {
-            var service = new DesktopUpdates(release.Parent.FullName, release.Name, current!, feed,
+            var service = new DesktopUpdates(file.DirectoryName, current!, feed,
                 Convert.FromBase64String(key), testChannel, http);
             using var publisher = service.OpenPublisher();
             if (!service.AllowedAddress(feed) || !service.IsCurrentInstall()) return null;
@@ -68,15 +65,15 @@ internal sealed class DesktopUpdates
 
     private bool IsCurrentInstall()
     {
-        if (root.IndexOfAny(['"', '\r', '\n']) >= 0 ||
-            Encoding.ASCII.GetString(ReadLocal(Path.Combine(root, "active-release"), 12)) != build) return false;
-        using var install = JsonDocument.Parse(ReadLocal(Path.Combine(root, "public-install.json"), 8192), StrictJson);
+        if (root.IndexOfAny(['"', '\r', '\n']) >= 0 || ReleasePackage.Active(root) == null ||
+            !File.Exists(Path.Combine(root, ReleasePackage.Lease))) return false;
+        using var install = JsonDocument.Parse(ReadLocal(Path.Combine(root, ReleasePackage.Receipt), 8192), StrictJson);
         var mark = install.RootElement;
         var publisher = Convert.ToHexString(SHA256.HashData(publicKey));
         if (mark.GetProperty("schema").GetInt32() != 1 || mark.GetProperty("product").GetString() != "Nodicarta Edge" ||
             mark.GetProperty("channel").GetString() != Channel ||
             !string.Equals(mark.GetProperty("publisher").GetString(), publisher, StringComparison.OrdinalIgnoreCase)) return false;
-        using var release = JsonDocument.Parse(ReadLocal(Path.Combine(root, build, "bin", "nodicarta-release.json"), 8192), StrictJson);
+        using var release = JsonDocument.Parse(ReadLocal(Path.Combine(root, "nodicarta-release.json"), 8192), StrictJson);
         var stamp = release.RootElement;
         return stamp.GetProperty("releaseLine").GetString() == "public-v1" && stamp.GetProperty("channel").GetString() == Channel &&
             stamp.GetProperty("rid").GetString() == "win-x64" && stamp.GetProperty("version").GetString() == current.ToString() &&
@@ -193,7 +190,10 @@ internal sealed class DesktopUpdates
         return release;
     }
 
-    private string Cache => Path.Combine(root, "updates");
+    internal static string CacheFor(string root) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nodicarta", "EdgeUpdates",
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(root.ToUpperInvariant()))));
+    private string Cache => CacheFor(root);
     private string Attempt => Path.Combine(Cache, "last-attempt");
 
     private bool AttemptedRecently(DesktopUpdateRelease release)
@@ -207,10 +207,13 @@ internal sealed class DesktopUpdates
         catch (DirectoryNotFoundException) { return false; }
     }
 
-    internal async Task InstallAsync(DesktopUpdateRelease release, CancellationToken ct)
+    internal bool CanInstallNow() => ReleaseInstallation.IsLaunchIdle(root);
+
+    internal async Task<bool> InstallAsync(DesktopUpdateRelease release, CancellationToken ct)
     {
         if (!ReferenceEquals(release, verified) || release.Version <= current || !IsCurrentInstall())
             throw new InvalidOperationException(UiLanguage.Text("请先重新检查更新。", "Check for updates again."));
+        if (!CanInstallNow()) return false;
         CodexAccessFile.CheckPath(Cache);
         Directory.CreateDirectory(Cache);
         string staged = Path.Combine(Cache, "setup-" + Guid.NewGuid().ToString("N") + ".exe");
@@ -241,15 +244,30 @@ internal sealed class DesktopUpdates
             if (!ReferenceEquals(Interlocked.CompareExchange(ref verified, null, release), release))
                 throw new InvalidOperationException(UiLanguage.Text("请先重新检查更新。", "Check for updates again."));
             File.Move(attemptTemp, Attempt, true);
+            Process worker;
             try
             {
                 // NSIS consumes everything after /D= as the path; it must be last and unquoted.
-                using var worker = Process.Start(new ProcessStartInfo(staged) { WorkingDirectory = root,
-                    UseShellExecute = false, Arguments = "/S /UPDATE /D=" + root });
-                if (worker == null) throw new IOException("Could not start the installer.");
-                handedOff = true;
+                worker = Process.Start(new ProcessStartInfo(staged) { WorkingDirectory = root,
+                    UseShellExecute = false, Arguments = "/S /UPDATE /D=" + root })
+                    ?? throw new IOException("Could not start the installer.");
             }
             catch { File.Delete(Attempt); throw; }
+            using (worker)
+            {
+                handedOff = true;
+                await worker.WaitForExitAsync().ConfigureAwait(false);
+                handedOff = false;
+                if (worker.ExitCode == ReleaseInstallation.Deferred)
+                {
+                    File.Delete(Attempt);
+                    Interlocked.CompareExchange(ref verified, release, null);
+                    return false;
+                }
+                if (worker.ExitCode != 0)
+                    throw new IOException(UiLanguage.Text("安装程序未能完成更新。", "The installer could not finish the update."));
+            }
+            return true;
         }
         finally
         {

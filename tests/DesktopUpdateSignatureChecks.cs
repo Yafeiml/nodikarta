@@ -12,19 +12,26 @@ using ProjectHub.Edge.Desktop;
 using var signer = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 using var wrong = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 var root = Directory.CreateTempSubdirectory("nodicarta-update-check-");
+var cache = DesktopUpdates.CacheFor(root.FullName);
 try
 {
-    const string build = "001122aabbcc", version = "1.0.0";
-    var bin = Directory.CreateDirectory(Path.Combine(root.FullName, build, "bin")).FullName;
-    var exe = Path.Combine(bin, "ProjectHub.Edge.Desktop.exe");
+    const string version = "1.0.0";
+    var exe = Path.Combine(root.FullName, ReleasePackage.Desktop);
     var key = signer.ExportSubjectPublicKeyInfo();
     var publisher = Convert.ToHexString(SHA256.HashData(key));
     var marker = Path.Combine(root.FullName, "public-install.json");
-    var pointer = Path.Combine(root.FullName, "active-release");
+    var lease = Path.Combine(root.FullName, ".edge-lease");
     void Mark(string id) => File.WriteAllText(marker, JsonSerializer.Serialize(new { schema = 1, product = "Nodicarta Edge", channel = "stable", publisher = id }));
-    File.WriteAllText(pointer, build);
-    File.WriteAllText(Path.Combine(bin, "nodicarta-release.json"), JsonSerializer.Serialize(new {
-        releaseLine = "public-v1", rid = "win-x64", channel = "stable", version, publisherKeyId = publisher }));
+    File.WriteAllBytes(lease, []);
+    foreach (var name in new[] { ReleasePackage.Desktop, ReleasePackage.Cli, ReleasePackage.NativeCli })
+        File.WriteAllText(Path.Combine(root.FullName, name), "runtime fixture");
+    var stamp = Path.Combine(root.FullName, "nodicarta-release.json");
+    void Stamp(string installed) => File.WriteAllText(stamp, JsonSerializer.Serialize(new {
+        releaseLine = "public-v1", rid = "win-x64", channel = "stable", version = installed, publisherKeyId = publisher }));
+    Stamp(version);
+    File.WriteAllLines(Path.Combine(root.FullName, "SHA256SUMS"),
+        new[] { ReleasePackage.Desktop, ReleasePackage.Cli, ReleasePackage.NativeCli, "nodicarta-release.json" }
+            .Select(name => ReleasePackage.Hash(Path.Combine(root.FullName, name)) + "  " + name));
     Mark(publisher);
     using var transport = new MockFeed();
     using var client = new HttpClient(transport);
@@ -57,6 +64,12 @@ try
     Sign(Offer().ToJsonString());
     var release = await service.CheckAsync(ct) ?? throw new Exception("Missing genuine newer release");
     await Rejected(() => service.InstallAsync(release with { Size = 10 }, ct), "a forged caller release");
+    using (File.Open(lease, FileMode.Open, FileAccess.Read, FileShare.Read))
+    {
+        if (service.CanInstallNow() || await service.InstallAsync(release, ct) || Directory.Exists(cache))
+            throw new Exception("The update did not wait for the live MCP lease");
+    }
+    if (!service.CanInstallNow()) throw new Exception("The update cannot retry after the MCP lease exits");
     Sign(Offer().ToJsonString(), wrong);
     await Rejected(() => service.CheckAsync(ct), "a foreign signer");
     Sign(Offer().ToJsonString());
@@ -86,14 +99,14 @@ try
         transport.Package = served;
         release = (await service.CheckAsync(ct))!;
         await Rejected(() => service.InstallAsync(release, ct), "a truncated, oversized, or altered installer");
-        if (Directory.EnumerateFiles(Path.Combine(root.FullName, "updates"), "setup-*").Any())
+        if (Directory.EnumerateFiles(cache, "setup-*").Any())
             throw new Exception("Bad download was left staged");
     }
     release = (await service.CheckAsync(ct))!;
-    File.WriteAllText(pointer, "001122aabbdd");
+    Stamp("1.0.1");
     await Rejected(() => service.InstallAsync(release, ct), "an inactive installation");
-    File.WriteAllText(pointer, build);
-    var attempt = Path.Combine(root.FullName, "updates", "last-attempt");
+    Stamp(version);
+    var attempt = Path.Combine(cache, "last-attempt");
     File.WriteAllText(attempt, "1.0.1 " + sha);
     if (await service.CheckAsync(ct, automatic:true) != null || await service.CheckAsync(ct) == null)
         throw new Exception("Rollback cooldown or a manual retry failed");
@@ -101,7 +114,11 @@ try
     if (await service.CheckAsync(ct, automatic:true) == null) throw new Exception("Automatic retry never recovered");
     Console.WriteLine("PASS: trusted feed identity, exact-byte signing, architecture/channel/version checks, bounded download, corruption, handoff guard and retry.");
 }
-finally { root.Delete(true); }
+finally
+{
+    if (Directory.Exists(cache)) Directory.Delete(cache, recursive: true);
+    root.Delete(true);
+}
 
 sealed class MockFeed : HttpMessageHandler
 {

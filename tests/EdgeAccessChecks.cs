@@ -97,9 +97,13 @@ try
         var body = instructions[..instructions.IndexOf("\n```json\n", StringComparison.Ordinal)];
         Check(body.StartsWith(english ? "Register" : "请在", StringComparison.Ordinal)
             && body.Contains("nodicarta", StringComparison.Ordinal)
+            && body.Contains("nodicarta-context", StringComparison.Ordinal)
+            && body.Contains("nodicarta-sync", StringComparison.Ordinal)
+            && body.Contains(english ? "stand-up summary" : "两句晨会摘要", StringComparison.Ordinal)
+            && body.Contains(english ? "read-only, local-only, and do-not-record" : "仅本地、只读或不要记录", StringComparison.Ordinal)
             && !body.Contains("projecthub", StringComparison.OrdinalIgnoreCase)
             && instructions.EndsWith("\n```json\n" + expected + "\n```", StringComparison.Ordinal),
-            "The copied instructions must include the exact MCP configuration in either language");
+            "The copied instructions must include handoff guidance and the exact MCP configuration in either language");
     }
     UiLanguage.Load(state);
 

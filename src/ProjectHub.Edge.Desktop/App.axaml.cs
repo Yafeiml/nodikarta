@@ -21,7 +21,6 @@ public partial class App : Application
     internal string? LinuxStartupError { get; init; }
 #endif
     internal EventWaitHandle Wake { private get; init; } = null!;
-    internal EventWaitHandle LegacyWake { private get; init; } = null!;
     internal EventWaitHandle Retire { private get; init; } = null!;
     internal Action Started { private get; init; } = null!;
     internal bool Background { private get; init; }
@@ -136,8 +135,6 @@ public partial class App : Application
             quit.Click += (_, _) => desktop.Shutdown();
             var registration = ThreadPool.RegisterWaitForSingleObject(Wake,
                 (_, _) => Dispatcher.UIThread.Post(ShowMainWindow), null, Timeout.Infinite, false);
-            var legacyRegistration = ThreadPool.RegisterWaitForSingleObject(LegacyWake,
-                (_, _) => Dispatcher.UIThread.Post(ShowMainWindow), null, Timeout.Infinite, false);
             var retireRegistration = ThreadPool.RegisterWaitForSingleObject(Retire,
                 (_, _) => Dispatcher.UIThread.Post(() => desktop.Shutdown()), null, Timeout.Infinite, true);
             Started();
@@ -181,7 +178,6 @@ public partial class App : Application
                 systemPreferencesTimer.Stop();
                 UiLanguage.Changed -= UpdateMenuLanguage;
                 registration.Unregister(null);
-                legacyRegistration.Unregister(null);
                 retireRegistration.Unregister(null);
                 stop.Cancel();
                 StopApplicationUpdates();

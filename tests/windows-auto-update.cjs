@@ -76,7 +76,8 @@ async function main() {
         fs.writeFileSync(path.join(fixture, 'pairing.txt'), offer + '.' + code);
         const child = spawn('pwsh.exe', ['-NoProfile', '-File', path.join(__dirname, 'windows-auto-update.ps1'),
             '-OldSetup', oldSetup, '-OldVersion', previous.version, '-NewVersion', next.version, '-Root', fixture,
-            '-Core', 'http://127.0.0.1:' + core.address().port, '-ProjectId', project.projectId, ...(recovery ? ['-Recovery'] : [])],
+            '-Core', 'http://127.0.0.1:' + core.address().port, '-ProjectId', project.projectId,
+            ...(recovery ? ['-Recovery', '-ReplaySetup', newSetup, '-ReplaySha256', next.sha256] : [])],
             { windowsHide: true, stdio: ['ignore','inherit','inherit'] });
         const [exit] = await once(child, 'exit');
         assert.equal(exit, 0, 'Isolated desktop installation failed');

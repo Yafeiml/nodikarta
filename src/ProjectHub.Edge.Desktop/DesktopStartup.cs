@@ -12,14 +12,15 @@ internal sealed class DesktopStartup(string executable, string stateDirectory, s
 
     internal static DesktopStartup ForCurrentUser(string state)
     {
+        var executable = EdgeInstallCommand.DesktopEntry(Environment.ProcessPath!);
         var testChannel = WindowsAotReleaseMetadata.IsFixture;
         var testHome = Environment.GetEnvironmentVariable("NODICARTA_EDGE_SETUP_TEST_HOME");
         if (testChannel && Environment.GetEnvironmentVariable("NODICARTA_EDGE_SETUP_SCOPE") == "fixture" &&
             !string.IsNullOrWhiteSpace(testHome) && Path.IsPathFullyQualified(testHome))
-            return new DesktopStartup(Environment.ProcessPath!, state, Path.Combine(testHome, "Startup"), _ => true);
+            return new DesktopStartup(executable, state, Path.Combine(testHome, "Startup"), _ => true);
 
         var folder = Environment.GetFolderPath(Environment.SpecialFolder.Startup, Environment.SpecialFolderOption.DoNotVerify);
-        return new DesktopStartup(Environment.ProcessPath!, state, folder, IsApproved);
+        return new DesktopStartup(executable, state, folder, IsApproved);
     }
 
     internal static bool IsApproved(string name)

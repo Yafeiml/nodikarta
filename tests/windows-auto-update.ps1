@@ -1,7 +1,8 @@
 #requires -Version 7.0
 # Called by windows-auto-update.cjs with an isolated signed channel, account and Core.
 param([Parameter(Mandatory)][string]$OldSetup, [string]$OldVersion, [string]$NewVersion,
-      [Parameter(Mandatory)][string]$Root, [string]$Core, [string]$ProjectId, [switch]$Recovery)
+      [Parameter(Mandatory)][string]$Root, [string]$Core, [string]$ProjectId, [switch]$Recovery,
+      [string]$ReplaySetup, [string]$ReplaySha256)
 $ErrorActionPreference = 'Stop'
 $fixture = (Resolve-Path -LiteralPath $Root).Path
 if ([IO.Path]::GetDirectoryName($fixture) -ne [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetTempPath()) -or
@@ -34,6 +35,12 @@ function In-Test {
         $_.Path.StartsWith($install+'\',[StringComparison]::OrdinalIgnoreCase) })
 }
 function Check($ok,[string]$message) { if (!$ok) { throw $message } }
+function Fixture-Reply([string]$command) {
+    if ($command) { $rpc.StandardInput.WriteLine($command) }
+    $line = $rpc.StandardOutput.ReadLineAsync().WaitAsync([timespan]::FromSeconds(55)).GetAwaiter().GetResult()
+    Check ($null -ne $line) 'The MCP fixture exited'
+    $line | ConvertFrom-Json
+}
 function Start-Local([string]$file,[string[]]$arguments,[switch]$Wait) {
     $info=[Diagnostics.ProcessStartInfo]::new($file)
     $info.UseShellExecute=$false
@@ -70,6 +77,7 @@ function Skills-Fingerprint {
 }
 $live=Join-Path $fixture 'resident-live'
 [IO.File]::WriteAllText($live,'isolated test')
+$rpc = $null
 try {
     # NSIS reads everything after the unquoted last /D= as a single destination.
     $info=[Diagnostics.ProcessStartInfo]::new($OldSetup); $info.UseShellExecute=$false
@@ -78,8 +86,8 @@ try {
     try { Check ($setup.WaitForExit(90000) -and $setup.ExitCode -eq 0) 'Initial setup failed' } finally { $setup.Dispose() }
     $old=Wait-Check 'old version resident' { @(In-Test) | Where-Object { $_.MainModule.FileVersionInfo.ProductVersion -eq $OldVersion } }
     Check ($old.MainWindowHandle -eq 0) 'Quiet install opened a main window'
-    $active=Join-Path $install 'active-release'
-    $oldBuild=[IO.File]::ReadAllText($active)
+    $manifest=Join-Path $install 'SHA256SUMS'
+    $oldBuild=(Get-FileHash -LiteralPath $manifest).Hash
     $cli=Join-Path $install 'ProjectHub.Edge.exe'
     (Get-Content -Raw -LiteralPath (Join-Path $fixture 'pairing.txt')) | & $cli --state $state pair --core $Core | Out-Null
     Check ($LASTEXITCODE -eq 0) 'Fixture could not pair'
@@ -95,32 +103,59 @@ try {
     if ($Recovery) { . (Join-Path $PSScriptRoot 'windows-setup-recovery.ps1'); return }
     $null=Wait-Check 'a real automatic probe rejected the damaged signature' { Test-Path -LiteralPath (Join-Path $fixture 'signature-served') }
     Start-Sleep -Seconds 2
-    Check (!$old.HasExited -and [IO.File]::ReadAllText($active) -ceq $oldBuild -and
+    Check (!$old.HasExited -and (Get-FileHash -LiteralPath $manifest).Hash -ceq $oldBuild -and
         !(Test-Path -LiteralPath (Join-Path $fixture 'unsafe-download'))) 'An invalid update was downloaded or activated'
-    $oldPath=$old.Path
     Stop-EdgeTestDesktop $old
+    $mcp = [Diagnostics.ProcessStartInfo]::new($node)
+    $mcp.UseShellExecute = $false
+    $mcp.CreateNoWindow = $true
+    $mcp.RedirectStandardInput = $mcp.RedirectStandardOutput = $true
+    foreach ($arg in (Join-Path $PSScriptRoot 'windows-draft-session.cjs'),$cli,$state) { $mcp.ArgumentList.Add($arg) }
+    $rpc = [Diagnostics.Process]::Start($mcp)
+    $null = Fixture-Reply
+    Check ((Fixture-Reply connect).ok) 'The test MCP session could not connect'
     [IO.File]::WriteAllText((Join-Path $fixture 'serve-valid'),'ready')
     $previousPid=$old.Id
-    $old=Start-Local $oldPath @('--background','--state',$state)
+    $request=Start-Local $cli @('--background','--state',$state)
+    try { Check ($request.WaitForExit(10000) -and $request.ExitCode -eq 0) 'The login launcher did not dispatch' } finally { $request.Dispose() }
+    $old=Wait-Check 'baseline resident started through the fixed launcher' {
+        @(In-Test) | Where-Object { $_.MainModule.FileVersionInfo.ProductVersion -eq $OldVersion }
+    }
+    $null=Wait-Check 'valid signature served while MCP is running' {
+        $sig = Join-Path $fixture 'signature-served'
+        (Test-Path -LiteralPath $sig) -and [IO.File]::ReadAllText($sig) -ceq 'valid'
+    }
+    Start-Sleep -Seconds 2
+    Check (!$old.HasExited -and !(Test-Path -LiteralPath (Join-Path $fixture 'download-count')) -and
+        (Get-FileHash -LiteralPath $manifest).Hash -ceq $oldBuild -and (Fixture-Reply probe).ok) 'The valid update did not wait for the live MCP session'
+    Check ((Fixture-Reply disconnect).connections -eq 0) 'The test MCP session did not close'
     $next=Wait-Check 'the desktop automatically installed and started the newer signed release' {
         @(In-Test) | Where-Object { $_.MainModule.FileVersionInfo.ProductVersion -eq $NewVersion -and
-            !(Test-Path -LiteralPath (Join-Path $install '.nodicarta-install-transaction.json')) }
+            !(Test-Path -LiteralPath (Join-Path $install '.nodicarta-install-transaction.json')) -and
+            !(Test-Path -LiteralPath (Join-Path $install '.nodicarta-install-backup')) }
     } 150
-    Check ($old.HasExited -and $old.ExitCode -eq 0 -and @(In-Test).Count -eq 1 -and $next.MainWindowHandle -eq 0) 'Desktop handoff was not quiet and unique'
-    $newBuild=[IO.File]::ReadAllText($active)
-    Check ($oldBuild -ne $newBuild -and $next.Path -eq (Join-Path $install "$newBuild/bin/ProjectHub.Edge.Desktop.exe")) 'Active release did not match the resident'
+    Check ($old.HasExited -and @(In-Test).Count -eq 1 -and $next.MainWindowHandle -eq 0) 'Desktop handoff was not quiet and unique'
+    $newBuild=(Get-FileHash -LiteralPath $manifest).Hash
+    Check ($oldBuild -ne $newBuild -and $next.Path -eq (Join-Path $install 'ProjectHub.Edge.Desktop.exe') -and
+        !(Test-Path -LiteralPath (Join-Path $install 'active-release')) -and
+        @((Get-ChildItem -LiteralPath $install -Directory -Force) | Where-Object Name -cmatch '^[0-9a-f]{12}$').Count -eq 0) 'The new desktop does not use a flat install'
     $shell=New-Object -ComObject WScript.Shell
     $menu=$shell.CreateShortcut((Join-Path $scope 'Programs/Nodicarta Edge.lnk'))
     $startup=$shell.CreateShortcut((Join-Path $scope 'Startup/Nodicarta Edge.lnk'))
-    Check ($menu.TargetPath -eq $next.Path -and $startup.TargetPath -eq $next.Path -and $startup.Arguments -eq "--background --state `"$state`"") 'Login settings lost their target or state'
+    Check ($menu.TargetPath -eq $cli -and $startup.TargetPath -eq $cli -and $startup.Arguments -eq "--background --state `"$state`"") 'Login settings lost their target or state'
     Check ((Database-Fingerprint) -ceq $before -and [IO.File]::ReadAllText($skillsPreference) -ceq 'false' -and
         $skills -ceq (Skills-Fingerprint) -and $configHash -ceq (Get-FileHash -LiteralPath $config).Hash) 'User pairing, bindings or Skills changed'
     [ordered]@{WindowsBuild=[Environment]::OSVersion.Version.ToString();previous=$OldVersion;current=$NewVersion;
-        previousBuild=$oldBuild;activeBuild=$newBuild;invalidSignatureKeptPid=$previousPid;newPid=$next.Id;
+        previousManifest=$oldBuild;activeManifest=$newBuild;invalidSignatureKeptPid=$previousPid;newPid=$next.Id;
         processCount=@(In-Test).Count;silent=$true;startupTargetAndStatePreserved=$true;pairedDatabasePreserved=$true;
-        agentCommandAndSkillsPreserved=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixture 'verified.json')
-    Write-Host "PASS: real desktop automatically updated $OldVersion to $NewVersion after rejecting a damaged signature."
+        agentCommandAndSkillsPreserved=$true;deferredUntilMcpClosed=$true} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $fixture 'verified.json')
+    Write-Host "PASS: real desktop rejected a damaged signature, waited for MCP, and automatically updated $OldVersion to $NewVersion."
 } finally {
+    if ($rpc) {
+        $rpc.StandardInput.Close()
+        if (!$rpc.WaitForExit(10000)) { $rpc.Kill($true); $rpc.WaitForExit() }
+        $rpc.Dispose()
+    }
     foreach ($p in @(In-Test)) { Stop-EdgeTestDesktop $p }
     if (@(In-Test).Count -eq 0) { [IO.File]::Delete($live) }
 }

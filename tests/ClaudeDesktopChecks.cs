@@ -27,6 +27,8 @@ try
     var classicFile = Path.Combine(roaming, "Claude", filename);
     var oldPackagedFile = Path.Combine(local, "Packages", family, "LocalCache", "Roaming", "Claude", filename);
     var currentPackagedFile = Path.Combine(local, "Claude-Data", family.ToLowerInvariant(), filename);
+    var desktopBootstrapFile = Path.Combine(local, "Claude", filename);
+    var thirdPartyFile = Path.Combine(local, "Claude-3p", filename);
     var cliFile = Path.Combine(home, ".claude.json");
     var launcher = Path.Combine(commands, "claude.cmd");
     var packaged = true;
@@ -66,6 +68,22 @@ try
         "Connecting Desktop alone leaves Claude Code and the previous profile alone.");
 
     var desktopBefore = Stamp(currentPackagedFile);
+    Write(desktopBootstrapFile, """{"deploymentMode":"3p"}""");
+    Write(thirdPartyFile, original);
+    var bootstrapBefore = Stamp(desktopBootstrapFile);
+    Check(Desktop().ConfigPath == thirdPartyFile && Row() is { CanBatchInstall: true, IsConnected: false },
+        "A registration in the inactive regular profile must not hide missing MCP in third-party mode.");
+    await access.InstallAsync("claude", default);
+    CheckSaved(thirdPartyFile, desktopCopy);
+    Check(Row() is { IsConnected: true, CanDisconnect: true } && Stamp(desktopBootstrapFile) == bootstrapBefore &&
+        Stamp(currentPackagedFile) == desktopBefore, "Connecting in third-party mode only edits the active profile.");
+    var thirdPartyBefore = Stamp(thirdPartyFile);
+    Write(desktopBootstrapFile, """{"deploymentMode":"1p"}""");
+    access.MigrateInstalledCommands();
+    Check(Desktop().ConfigPath == currentPackagedFile && Row().IsConnected && Stamp(thirdPartyFile) == thirdPartyBefore &&
+        Stamp(currentPackagedFile) == desktopBefore, "Switching back selects the regular profile and preserves the inactive third-party configuration.");
+    File.Delete(desktopBootstrapFile);
+
     Write(launcher, "@exit /b 1");
     Write(cliFile, original);
     Check(Row() is { Id: "claude", CanBatchInstall: true, PartiallyConnected: true },
@@ -141,7 +159,7 @@ try
     Write(Path.Combine(local, "AnthropicClaude", "claude.exe"), "");
     Check(Desktop().Detected && Desktop().ConfigPath == classicFile && Desktop().BlockedReason == null,
         "The classic executable selects roaming AppData even when stale packaged profiles exist.");
-    Console.WriteLine("PASS: one Claude row, either edition added later, batch and retry, target-specific copies, conflict preservation, disconnect and profile migration.");
+    Console.WriteLine("PASS: one Claude row, either edition added later, batch and retry, target-specific copies, conflict preservation, disconnect, profile migration and deployment-mode switching.");
 }
 finally { scratch.Delete(true); }
 

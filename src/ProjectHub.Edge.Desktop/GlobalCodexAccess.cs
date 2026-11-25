@@ -17,16 +17,15 @@ internal sealed class GlobalCodexAccess
         ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
     private static string CodexHome => Path.GetFullPath(Environment.GetEnvironmentVariable("CODEX_HOME") is { Length: > 0 } configured
         ? configured : Path.Combine(UserHome, ".codex"));
-    private static string ReleaseCommand => Path.Combine(AppContext.BaseDirectory, "ProjectHub.Edge.exe");
-    internal static string CurrentCommand => EdgeInstallCommand.Resolve(ReleaseCommand);
-    internal GlobalCodexAccess(EdgeDesktopClient client) : this(client, CodexHome, UserHome, ReleaseCommand) { }
+    internal static string CurrentCommand => Path.Combine(AppContext.BaseDirectory, ReleasePackage.Cli);
+    internal GlobalCodexAccess(EdgeDesktopClient client) : this(client, CodexHome, UserHome, CurrentCommand) { }
 
     internal GlobalCodexAccess(EdgeDesktopClient client, string codexHome, string userHome, string command)
     {
         this.client = client;
         this.userHome = Path.GetFullPath(userHome);
         configPath = Path.Combine(Path.GetFullPath(codexHome), "config.toml");
-        this.command = EdgeInstallCommand.Resolve(Path.GetFullPath(command));
+        this.command = Path.GetFullPath(command);
     }
 
     private static bool Same(string left, string right) => string.Equals(left, right, StringComparison.OrdinalIgnoreCase);
@@ -126,7 +125,7 @@ internal sealed class GlobalCodexAccess
         if (entry == null || !EdgeStatePaths.Same(entry.State, state)) return SkillRegistration.Inactive;
         return EdgeInstallCommand.Classify(entry.Command, command) switch
         {
-            EdgeCommandKind.Exact or EdgeCommandKind.SameInstall or EdgeCommandKind.OtherCopy => SkillRegistration.Current,
+            EdgeCommandKind.Exact or EdgeCommandKind.OtherCopy => SkillRegistration.Current,
             EdgeCommandKind.Missing => SkillRegistration.MissingCommand,
             _ => SkillRegistration.Inactive
         };
@@ -331,15 +330,15 @@ internal sealed class GlobalCodexAccess
     }
 
     internal static void RefreshManagedCommand(string installRoot, string? stateDirectory = null) =>
-        RefreshManagedCommand(installRoot, ReleaseCommand, Path.Combine(CodexHome, "config.toml"), stateDirectory);
+        RefreshManagedCommand(installRoot, CurrentCommand, Path.Combine(CodexHome, "config.toml"), stateDirectory);
 
     internal static void RefreshManagedCommand(string installRoot, string command, string config, string? stateDirectory = null)
     {
         if (!Path.IsPathFullyQualified(command)) return;
-        var parts = Path.GetRelativePath(installRoot, command).Split(Path.DirectorySeparatorChar);
-        if (parts.Length != 3 || parts[0].Length != 12 || !parts[0].All(Uri.IsHexDigit) ||
-            !Same(parts[1], "bin") || !Same(parts[2], "ProjectHub.Edge.exe")) return;
+        var launcher = Path.Combine(Path.GetFullPath(installRoot), ReleasePackage.Cli);
+        if (!Same(Path.GetFullPath(command), launcher) || EdgeInstallCommand.Classify(launcher, launcher) != EdgeCommandKind.Exact)
+            return;
         var state = EdgeStatePaths.Resolve(stateDirectory ?? Program.DefaultStateDirectory);
-        RepairMissingCommand(config, state, EdgeInstallCommand.Resolve(command));
+        RepairMissingCommand(config, state, launcher);
     }
 }

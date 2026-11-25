@@ -83,6 +83,14 @@ Section "Nodicarta Edge"
   WriteUninstaller "$PLUGINSDIR\Uninstall.exe"
   ExecWait '"$PLUGINSDIR\bin\ProjectHub.Edge.Desktop.exe" --install-release "$INSTDIR" "$setupMode" "${SCOPE}"' $0
   IfErrors setupFailed
+  ${If} $0 == 75
+    SetErrorLevel 75
+    Quit
+  ${EndIf}
+  ${If} $0 == 1602
+    SetErrorLevel 1602
+    Quit
+  ${EndIf}
   ${If} $0 != 0
     setupFailed:
     SetErrorLevel 1
@@ -93,27 +101,8 @@ SectionEnd
 
 Section "Uninstall"
   InitPluginsDir
-  FileOpen $0 "$INSTDIR\active-release" r
-  IfErrors uninstallFailed
-  FileRead $0 $1
-  FileClose $0
-  StrLen $0 $1
-  StrCmp $0 12 0 uninstallFailed
-  StrCpy $2 0
-  checkDigit:
-    StrCpy $3 $1 1 $2
-    StrCpy $4 0
-    findDigit:
-      StrCpy $5 "0123456789abcdef" 1 $4
-      StrCmpS $3 $5 foundDigit
-      IntOp $4 $4 + 1
-      IntCmp $4 16 uninstallFailed findDigit uninstallFailed
-    foundDigit:
-    IntOp $2 $2 + 1
-    IntCmp $2 12 checkDone checkDigit uninstallFailed
-  checkDone:
   SetOutPath "$PLUGINSDIR\bin"
-  CopyFiles /SILENT "$INSTDIR\$1\bin\*.*" "$PLUGINSDIR\bin"
+  CopyFiles /SILENT /FILESONLY "$INSTDIR\ProjectHub.Edge.Desktop.exe" "$PLUGINSDIR\bin"
   IfErrors uninstallFailed
   ExecWait '"$PLUGINSDIR\bin\ProjectHub.Edge.Desktop.exe" --install-release "$INSTDIR" "uninstall" "${SCOPE}"' $0
   IfErrors uninstallFailed

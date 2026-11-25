@@ -54,12 +54,13 @@ function Get-EdgeEmbeddedRelease([string]$File) {
     } finally { $stream.Dispose() }
 }
 
-function Get-EdgeNativeExports([string]$File) {
+function Get-EdgeNativeExports([string]$File, [switch]$WindowsGui) {
     $stream = [IO.File]::OpenRead($File)
     try {
         $pe = [Reflection.PortableExecutable.PEReader]::new($stream)
         try {
             if ($pe.HasMetadata -or $pe.PEHeaders.CoffHeader.Machine -ne 'Amd64') { throw "Expected an x64 native PE: $File" }
+            if ($WindowsGui -and $pe.PEHeaders.PEHeader.Subsystem -ne 'WindowsGui') { throw "Expected Windows GUI subsystem: $File" }
             $export = $pe.PEHeaders.PEHeader.ExportTableDirectory
             if (!$export.Size) { return }
             $table = $pe.GetSectionData($export.RelativeVirtualAddress).GetReader()
@@ -85,22 +86,21 @@ function Assert-EdgeSetupTrust([string]$Bin, [Version]$Version, [bool]$TestScope
     $managed = Join-Path $Bin 'ProjectHub.Edge.Desktop.dll'
     $native = @(Get-EdgeNativeExports $desktop) -ccontains 'DotNetRuntimeDebugHeader'
     if ($native) {
-        foreach ($name in 'ProjectHub.Edge.Desktop.dll','ProjectHub.Edge.dll','coreclr.dll','clrjit.dll') {
+        foreach ($name in 'ProjectHub.Edge.Desktop.dll','ProjectHub.Edge.dll','coreclr.dll','clrjit.dll','hostfxr.dll','Nodicarta.Edge.Launcher.exe') {
             if (Test-Path -LiteralPath (Join-Path $Bin $name)) { throw "Unexpected managed runtime payload: $name" }
         }
-        $null = Get-EdgeNativeExports (Join-Path $Bin 'ProjectHub.Edge.exe')
-        $bridge = @(Get-EdgeNativeExports (Join-Path $Bin 'hostfxr.dll'))
-        if ($bridge.Count -ne 1 -or $bridge[0] -cne 'hostfxr_main_startupinfo') {
-            throw 'Expected the Edge launcher compatibility module.'
-        }
+        $launcher = Join-Path $Bin 'ProjectHub.Edge.exe'
+        $null = Get-EdgeNativeExports $launcher -WindowsGui
+        $launcherInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($launcher)
         $cliExports = @(Get-EdgeNativeExports (Join-Path $Bin 'NodicartaEdgeCli.dll'))
-        if ($cliExports -cnotcontains 'DotNetRuntimeDebugHeader' -or $cliExports -cnotcontains 'hostfxr_main_startupinfo') {
-            throw 'The native CLI or its launcher compatibility entry is missing.'
+        if ($cliExports -cnotcontains 'DotNetRuntimeDebugHeader' -or $cliExports -cnotcontains 'nodicarta_edge_run_cli' -or
+            $cliExports -ccontains 'hostfxr_main_startupinfo') {
+            throw 'Invalid Native AOT CLI launch API.'
         }
         $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($desktop)
         $fields = $info.Comments -csplit '\|'
         if ($fields.Count -ne 4 -or $fields[0] -cne 'Nodicarta/public-v1' -or
-            [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $Bin 'ProjectHub.Edge.exe')).ProductVersion -cne $Version.ToString() -or
+            $launcherInfo.FileDescription -cne 'Nodicarta Edge Launcher' -or $launcherInfo.ProductName -cne 'Nodicarta Edge' -or
             [Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $Bin 'NodicartaEdgeCli.dll')).ProductVersion -cne $Version.ToString()) {
             throw 'Invalid Native AOT release metadata.'
         }

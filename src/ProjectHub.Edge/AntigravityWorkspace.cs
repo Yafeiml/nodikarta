@@ -69,7 +69,9 @@ internal static class AntigravityWorkspace
             ---
             trigger: always_on
             ---
-            The active Nodicarta MCP server for this workspace is `{serverName}`. This name supersedes older workspace server names in retrieval instructions. For questions about earlier project work, design choices, or shared assets, invoke its `search_project_knowledge` tool and follow the evidence for the relevant decision.
+            The active Nodicarta MCP server for this workspace is `{serverName}`. This name supersedes older workspace server names in retrieval instructions. For questions about earlier project work, design choices, or shared assets, use its `search_project_knowledge` tool when available and follow the evidence for the relevant decision.
+
+            {McpHost.ProjectMemoryInstructions}
             """;
         var config = JsonSerializer.SerializeToUtf8Bytes(new JsonObject {
             ["mcpServers"] = new JsonObject { [serverKey] = new JsonObject {

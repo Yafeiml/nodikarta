@@ -6,14 +6,20 @@ Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
 . (Join-Path $PSScriptRoot '../deploy/windows/Stop-EdgeTestDesktop.ps1')
 . (Join-Path $PSScriptRoot 'Save-WindowsTestWindow.ps1')
 $exe = (Get-Item -LiteralPath $Executable).FullName
+$root = Split-Path -LiteralPath $exe
+$launcher = Join-Path $root 'ProjectHub.Edge.exe'
 $homePath = (Get-Item -LiteralPath $TestHome).FullName
 $tempRoot = [IO.Path]::TrimEndingDirectorySeparator([IO.Path]::GetTempPath()) + '\'
 if (!$exe.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase) -or
     !$homePath.StartsWith($tempRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'Use a disposable installed candidate and test home.' }
+if (![IO.File]::Exists($launcher) -or ![IO.File]::Exists((Join-Path $root '.edge-lease')) -or
+    ![IO.File]::Exists((Join-Path $root 'SHA256SUMS'))) {
+    throw 'Use the current installed desktop image.'
+}
 $startup = Join-Path $homePath 'Startup/Nodicarta Edge.lnk'
 $shell = New-Object -ComObject WScript.Shell
 $existing = $shell.CreateShortcut($startup)
-if (!(Test-Path -LiteralPath $startup) -or $existing.TargetPath -ne $exe -or $existing.Arguments -notmatch '--background') {
+if (!(Test-Path -LiteralPath $startup) -or $existing.TargetPath -ne $launcher -or $existing.Arguments -notmatch '--background') {
     throw 'The fixture installer must have registered the expected quiet startup shortcut.'
 }
 $original = [IO.File]::ReadAllBytes($startup)
@@ -30,7 +36,7 @@ function Until($name,[scriptblock]$condition) {
     throw "Timed out: $name (candidate $($app.Id), window '$($app.MainWindowTitle)')"
 }
 function Launch-Edge([string]$target, [string]$arguments) {
-    if ($target -ne $exe) { throw 'Unexpected candidate executable.' }
+    if ($target -notin $exe,$launcher) { throw 'Unexpected candidate executable.' }
     $info = [Diagnostics.ProcessStartInfo]::new($target)
     $info.UseShellExecute = $false
     $info.Arguments = $arguments
@@ -65,7 +71,7 @@ function Toggle($parent,$id) {
 }
 function Value($parent,$id) { (Control $parent $id).GetCurrentPattern([Windows.Automation.TogglePattern]::Pattern).Current.ToggleState }
 function Wake-Resident {
-    $wake=Launch-Edge $exe "--state ""$state"""
+    $wake=Launch-Edge $launcher "--state ""$state"""
     try { if (!$wake.WaitForExit(6500) -or $wake.ExitCode -ne 0) { throw 'A repeat launch did not wake the existing resident.' } }
     finally { $wake.Dispose() }
     Until 'resident overview' { Window 'EdgeMainWindow' }
@@ -107,12 +113,16 @@ try {
     Toggle $settings 'StartOnLogin'
     $null=Until 'registered login' { Test-Path -LiteralPath $startup }
     $link=$shell.CreateShortcut($startup)
-    if ($link.Arguments -ne "--background --state ""$state""" -or $link.TargetPath -ne $exe) { throw 'Re-enabling did not register the current state and executable.' }
+    if ($link.Arguments -ne "--background --state ""$state""" -or $link.TargetPath -ne $launcher) { throw 'Re-enabling did not register the current state and fixed launcher.' }
     Pass 'Reopening in the other language retained both choices; enabling login saved the custom state path.'
     Push $settings 'CloseAppPreferences'
     Stop-EdgeTestDesktop $app
     $app.Dispose()
-    $app=Launch-Edge $link.TargetPath $link.Arguments
+    $app=$null
+    $launch=Launch-Edge $link.TargetPath $link.Arguments
+    try { if (!$launch.WaitForExit(6500) -or $launch.ExitCode -ne 0) { throw 'Registered startup command failed.' } }
+    finally { $launch.Dispose() }
+    $app=Until 'silent resident' { Get-Process ProjectHub.Edge.Desktop -ErrorAction Ignore | Where-Object Path -eq $exe }
     $null=Until 'silent initialization' { $app.WaitForInputIdle(250) }
     Start-Sleep -Milliseconds 850
     if ($app.HasExited -or (Window 'EdgeMainWindow')) { throw 'The startup command did not stay in the tray.' }

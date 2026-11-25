@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -73,6 +74,7 @@ internal static class StandardHarnesses
 
     internal static StandardHarness ClaudeDesktop(string local, string roaming, bool packaged, bool classicInstalled)
     {
+        const string configName = "claude_desktop_config.json";
         var directory = Path.Combine(roaming, "Claude");
         string? blocked = null;
         if (packaged)
@@ -85,7 +87,29 @@ internal static class StandardHarnesses
             else if (Directory.Exists(legacy) && !File.Exists(Path.Combine(legacy, ".user-data-left." + family))) directory = legacy;
             else blocked = "请先打开一次 Claude 桌面版，再返回接入。";
         }
-        return new StandardHarness("claude-desktop", "Claude Desktop", Path.Combine(directory, "claude_desktop_config.json"),
+        // Claude records its active inference mode separately from either profile on Windows.
+        var selector = Path.Combine(local, "Claude", configName);
+        if ((packaged || classicInstalled) && File.Exists(selector))
+        {
+            try
+            {
+                CodexAccessFile.CheckPath(selector);
+                using var settings = JsonDocument.Parse(CodexAccessFile.Decode(File.ReadAllBytes(selector)),
+                    new JsonDocumentOptions { AllowDuplicateProperties = false });
+                if (settings.RootElement.ValueKind != JsonValueKind.Object) throw new JsonException();
+                if (settings.RootElement.TryGetProperty("deploymentMode", out var mode) &&
+                    mode.ValueKind == JsonValueKind.String && mode.ValueEquals("3p"))
+                {
+                    directory = Path.Combine(local, "Claude-3p");
+                    blocked = Directory.Exists(directory) ? null : "请先打开一次 Claude 桌面版，再返回接入。";
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException or DecoderFallbackException)
+            {
+                blocked = "现有配置格式有误，请核对后重试。";
+            }
+        }
+        return new StandardHarness("claude-desktop", "Claude Desktop", Path.Combine(directory, configName),
             ["mcpServers"], packaged || classicInstalled, "接入后请完全退出并重新打开 Claude。") { BlockedReason = blocked };
     }
 

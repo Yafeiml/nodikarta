@@ -146,7 +146,7 @@ function Check-AntigravityGuidance($access) {
                         throw '已有或新绑定的目录缺少有效的项目连接或查询指引。'
                     }
                 }
-                $null = & $cli --state $state unbind --project $ProjectId --workspace $second.workspaceId --path $added
+                & $cli --state $state unbind --project $ProjectId --workspace $second.workspaceId --path $added | Out-Null
                 if ($LASTEXITCODE -or (Test-Path -LiteralPath (Join-Path $added '.agents/plugins/nodicarta')) -or
                     (Test-Path -LiteralPath (Join-Path $added '.agents/rules/nodicarta-workspace.md')) -or
                     !(Test-Path -LiteralPath (Join-Path $existing '.agents/plugins/nodicarta/mcp_config.json'))) {

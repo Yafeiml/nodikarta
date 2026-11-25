@@ -34,16 +34,16 @@ The maintainer publishes these three files on the stable GitHub Release tagged `
 
 Stage the complete set before making the release latest. Keep each versioned installer available at its original URL. Every release designated latest on the shared repository must provide the two stable feed assets. The client reads `https://github.com/Yafeiml/nodikarta/releases/latest/download/nodicarta-edge-stable-win-x64.json` and its sibling signature. The signature is Base64 of the 64-byte IEEE P1363 ECDSA P-256 signature over the exact UTF-8 manifest bytes, using SHA-256. The manifest binds the product, channel, OS/architecture, version, byte count, installer URL and SHA-256. A change of publisher key requires an explicit trust transition. Windows Authenticode signing of an installer, when used, must precede manifest signing.
 
-The installed MCP command keeps the same path across releases. A 1.0.x launcher loads the release-local file named `hostfxr.dll`. In Native AOT releases this is a small Nodicarta compatibility library that loads `NodicartaEdgeCli.dll` in the same process. Existing STDIO sessions finish on their original version and new sessions use the selected release.
+The installed `ProjectHub.Edge.exe` opens the desktop without a command and runs MCP or a CLI command with arguments. The launcher, desktop and CLI runtime files share the installation root. Automatic updates defer file replacement until running Edge command-line processes and MCP sessions close. Setup retains the previous files during the installation and restores them if the desktop fails to start. Installations from 1.1.4 or earlier require a one-time uninstall before switching to this layout.
 
 ## Qualification
 
 For a GitHub draft rehearsal, test the original installer downloaded from the draft first. After it passes, run `Sign-EdgeRelease.ps1` locally with that installer, its version, and `-RehearsalTag edge-rehearsal-v1.1.0-123`. The numeric suffix identifies the rehearsal and the version must match the installer. The signed URL points to the exact rehearsal tag under `Yafeiml/nodikarta`. The release coordinator uploads the returned `Manifest` and `Signature` files (`nodicarta-edge-rehearsal-win-x64.json` and its `.sig`) only to that draft.
 
-Restore a clean, offline x64 Windows VM with PowerShell 7 and Node. Copy in the original draft installer, a **lower-version** public installer, and `tests/windows-draft-installer.ps1` with its sibling `windows-draft-session.cjs` and `windows-mcp.cjs`. Verify the locally computed candidate hash against the draft and the baseline hash against the published release. Run from the checkout root inside that disposable VM:
+Restore a clean, offline x64 Windows VM with PowerShell 7 and Node. Copy in the original draft installer, a lower-version installer using the same root layout and public build configuration, and `tests/windows-draft-installer.ps1` with its sibling `windows-draft-session.cjs` and `windows-mcp.cjs`. Verify the locally computed candidate hash against the draft and the baseline hash against its build or release receipt. For the first release using the root layout, build a lower-version baseline from the same source using the public configuration. Run from the checkout root inside that disposable VM:
 
 ```powershell
-./tests/windows-draft-installer.ps1 -Candidate <draft-exe> -CandidateSha256 <verified-draft-sha256> -Baseline <older-public-exe> -BaselineSha256 <published-sha256> -GuestUuid <vm-uuid> -Evidence <receipt.json>
+./tests/windows-draft-installer.ps1 -Candidate <draft-exe> -CandidateSha256 <verified-draft-sha256> -Baseline <flat-baseline-exe> -BaselineSha256 <verified-baseline-sha256> -GuestUuid <vm-uuid> -Evidence <receipt.json>
 ```
 
 The receipt covers installation in public mode, an actual `/UPDATE`, recovery from a failed update, MCP sessions, pairing and directory bindings. Exercise automatic downloads and signature verification separately with the test channel below.

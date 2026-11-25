@@ -40,8 +40,8 @@ public partial class App
             {
                 UpdatePhase.Checking => UiLanguage.Text("正在检查新版本…", "Checking for updates…"),
                 UpdatePhase.Current => UiLanguage.Text("已检查稳定版渠道。", "Stable release channel checked."),
-                UpdatePhase.Available => UiLanguage.Text($"已发现 {pendingRelease?.Version}，收回托盘后会自动更新。",
-                    $"Version {pendingRelease?.Version} is available. Close to the tray to update."),
+                UpdatePhase.Available => UiLanguage.Text($"已发现 {pendingRelease?.Version}。窗口收回托盘且 MCP 会话结束后自动更新。",
+                    $"Version {pendingRelease?.Version} will install after closing to the tray and ending active MCP sessions."),
                 UpdatePhase.Installing => UiLanguage.Text("正在验证并准备安装。", "Verifying and preparing the update."),
                 UpdatePhase.HandedOff => UiLanguage.Text("已交给安装程序。", "The installer is applying the update."),
                 UpdatePhase.Failed => UiLanguage.Text("本次更新未完成，稍后会自动重试。", "The update could not finish. Edge will retry."),
@@ -101,8 +101,13 @@ public partial class App
                 updatePhase = release == null ? UpdatePhase.Current : UpdatePhase.Available;
             }
             if (pendingRelease == null || window?.IsVisible == true || PendingHarnessBatch is { IsCompleted: false }) return;
+            if (!updates.CanInstallNow()) return;
             updatePhase = UpdatePhase.Installing;
-            await updates.InstallAsync(pendingRelease, operation.Token);
+            if (!await updates.InstallAsync(pendingRelease, operation.Token))
+            {
+                updatePhase = UpdatePhase.Available;
+                return;
+            }
             pendingRelease = null;
             updatePhase = UpdatePhase.HandedOff;
             nextUpdateCheck = DateTimeOffset.UtcNow.AddHours(1);

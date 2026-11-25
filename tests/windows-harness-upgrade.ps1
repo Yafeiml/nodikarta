@@ -1,13 +1,22 @@
 # Loaded by the disposable Windows desktop fixture.
 $installation = [IO.Directory]::CreateDirectory((Join-Path $root 'Edge 安装')).FullName
 $fixedCommand = Join-Path $installation 'ProjectHub.Edge.exe'
+$installedDesktop = Join-Path $installation 'ProjectHub.Edge.Desktop.exe'
 function Copy-PackagedRelease([string]$desktop) {
     $bin = (Get-Item -LiteralPath $desktop).Directory
     $manifest = Join-Path $bin.Parent.FullName 'SHA256SUMS'
-    $id = (Get-FileHash -LiteralPath $manifest).Hash.Substring(0,12).ToLowerInvariant()
-    $release = [IO.Directory]::CreateDirectory((Join-Path $installation $id)).FullName
-    Copy-Item -LiteralPath $bin.FullName,$manifest -Destination $release -Recurse
-    Join-Path $release 'bin/ProjectHub.Edge.Desktop.exe'
+    if (![IO.File]::Exists($manifest)) { $manifest = Join-Path $bin.FullName 'SHA256SUMS' }
+    foreach ($line in [IO.File]::ReadAllLines($manifest)) {
+        if ($line -notmatch '^[0-9A-Fa-f]{64}  (.+)$') { throw 'Invalid QA release file list' }
+        $relative = $Matches[1]
+        $source = Join-Path $bin.FullName $relative
+        $target = [IO.Path]::GetFullPath((Join-Path $installation $relative))
+        if (!$target.StartsWith($installation + '\',[StringComparison]::OrdinalIgnoreCase)) { throw 'Invalid QA release path' }
+        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))
+        Copy-Item -LiteralPath $source -Destination $target -Force
+    }
+    Copy-Item -LiteralPath $manifest -Destination $installation -Force
+    [IO.File]::WriteAllBytes((Join-Path $installation '.edge-lease'),[byte[]]::new(0))
 }
 function Stop-FixtureWindow {
     if ($app) {
@@ -51,14 +60,13 @@ function Open-FixtureAccess([string]$language) {
     Click $main 'GlobalAccessButton'
     Wait-Ui '智能体接入' { AccessWindow }
 }
-function Wait-Connected($view, [switch]$LegacyButton) {
+function Wait-Connected($view) {
     foreach ($harnessId in 'codex','claude','antigravity','cursor','opencode','deepseek','pi') {
         try {
             $null = Wait-Ui "$harnessId 已接入" {
                 $button = ById $view "HarnessInstall_$harnessId"
-                if ($LegacyButton) { $button -and $button.Current.Name -like '已接入 *' -and !$button.Current.IsEnabled }
-                else { $button -and $button.Current.Name -like '断开 * 接入' -and $button.Current.IsEnabled -and
-                    (ById $view "HarnessStatus_$harnessId").Current.Name -like '已接入*' }
+                $button -and $button.Current.Name -like '断开 * 接入' -and $button.Current.IsEnabled -and
+                    (ById $view "HarnessStatus_$harnessId").Current.Name -like '已接入*'
             }
         } catch {
             $label = (ById $view "HarnessInstall_$harnessId").Current.Name
@@ -211,40 +219,36 @@ function Test-CommandFiles([string]$command) {
             '.yml'  { [regex]::Match($content, "(?m)^\s+command: '([^']*)'\s*$").Groups[1].Value }
             '.json' {
                 $json = $content | ConvertFrom-Json
-                if ($json.mcp) { $json.mcp.projecthub.command[0] } else { $json.mcpServers.projecthub.command }
+                if ($json.mcp) { $json.mcp.nodicarta.command[0] } else { $json.mcpServers.nodicarta.command }
             }
         }
         if ($configured -ne [IO.Path]::GetFullPath($command)) { throw "Unexpected MCP command in $file : $configured" }
     }
 }
-$previousExe = Copy-PackagedRelease $UpgradeFrom
-$newExe = Copy-PackagedRelease $exe
 foreach ($name in 'agy','dsh','pi') { [IO.File]::WriteAllText((Join-Path $launchers "$name.cmd"), '@exit /b 1') }
 $start.ArgumentList.Add('--state')
 $start.ArgumentList.Add($state)
 [IO.File]::WriteAllText((Join-Path $state 'ui-language.txt'), 'zh-CN')
 $app = $null
 try {
-    $start.FileName = $previousExe
+    Copy-PackagedRelease $UpgradeFrom
+    $start.FileName = $installedDesktop
     $app = [Diagnostics.Process]::Start($start)
     $access = Open-FixtureAccess
     Click $access 'InstallDetectedHarnesses'
-    Wait-Connected $access -LegacyButton
-    Test-CommandFiles (Join-Path (Split-Path $previousExe) 'ProjectHub.Edge.exe')
+    Wait-Connected $access
+    Test-CommandFiles $fixedCommand
+    $hashes = ($files | Get-FileHash).Hash
     Stop-FixtureWindow
     $app = $null
 
-    $newBuild = (Get-Item -LiteralPath $newExe).Directory.Parent.Name
-    Copy-Item -LiteralPath (Join-Path (Split-Path $newExe) 'Nodicarta.Edge.Launcher.exe') -Destination $fixedCommand
-    [IO.File]::WriteAllText((Join-Path $installation 'active-release'),$newBuild,[Text.Encoding]::ASCII)
-    $start.FileName = $newExe
+    Copy-PackagedRelease $exe
     $start.ArgumentList.Clear()
     foreach ($arg in '--refresh-harness-registration',$installation,'--state',$state) { $start.ArgumentList.Add($arg) }
     $refresh = [Diagnostics.Process]::Start($start)
     try { if (!$refresh.WaitForExit(30000) -or $refresh.ExitCode) { throw 'Upgrade registration failed' } }
     finally { $refresh.Dispose() }
     Test-CommandFiles $fixedCommand
-    $hashes = ($files | Get-FileHash).Hash
     $start.ArgumentList.Clear()
     $start.ArgumentList.Add('--state')
     $start.ArgumentList.Add($state)
@@ -258,7 +262,7 @@ try {
         Check-RowLayout $access 'zh-CN'
         $testedDpi = [EdgeQaCapture]::GetDpiForWindow([intptr]$main.Current.NativeWindowHandle)
     }
-    Pass '七项接入由旧版本实际创建。旧程序仍可运行时，升级刷新自动迁移七份配置；打开新版全部显示已接入，不需要点更新或切换。'
+    Pass '从前一版本切换到新版后，七项客户端的固定启动路径和配置文件保持原样。'
     $skillFiles = @(Get-ChildItem -LiteralPath (Join-Path $testUserHome '.agents/skills') -Directory -Filter 'nodicarta-*' |
         Sort-Object Name | ForEach-Object { Join-Path $_.FullName 'SKILL.md' })
     if ($skillFiles.Count -ne 5) { throw 'Expected five bundled Skills' }

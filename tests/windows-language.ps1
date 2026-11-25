@@ -28,7 +28,7 @@ Pass '切换英文后，品牌、概览、连接状态和操作即时更新，�
 Snapshot 'overview-en'
 
 $folder = [IO.Directory]::CreateDirectory((Join-Path $root '验收-工具目录')).FullName
-$null = & $cli --state $state bind --project $ProjectId --path $folder
+& $cli --state $state bind --project $ProjectId --path $folder | Out-Null
 if ($LASTEXITCODE) { throw 'Fixture folder could not be linked.' }
 Click $main 'RefreshButton'
 ExpectName $main 'UnbindDirectoryButton' "Unlink $folder"

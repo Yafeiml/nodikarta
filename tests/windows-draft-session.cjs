@@ -48,6 +48,8 @@ async function main() {
                     const result = await c.call('tools/list', {});
                     assert.ok(result.tools.some(tool => tool.name === 'get_edge_status'));
                 }
+            } else if (cmd === 'disconnect') {
+                for (const c of connections.splice(0)) c.close();
             } else throw Error('Unknown fixture command');
             output({ok:true, connections:connections.length});
         }

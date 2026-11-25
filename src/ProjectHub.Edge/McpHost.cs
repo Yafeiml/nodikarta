@@ -22,8 +22,19 @@ internal static class McpHost
 {
     internal static readonly JsonSerializerOptions ToolOptions = EdgeJson.CreateToolOptions();
 
-    internal static void SetServerInfo(McpServerOptions options) =>
+    internal const string ProjectMemoryInstructions = """
+        For a bound Nodicarta (脉络) workspace, recall earlier work by its evidence. Use nodicarta-context when available to check the relevant revision, open next steps, and pinned asset versions. For customer-facing answers, use only information approved for that audience and channel.
+
+        When the current work selects a reusable draft, approves a next step, adopts or withdraws a scoped decision, or obtains new verification or release evidence, check before replying. Use nodicarta-sync when available, or the exposed project tools, to compare with existing knowledge. Read the existing item before revising it and save only a meaningful change that the request and workspace authorize. Record what was chosen, why, what was approved, and what remains open. Keep internal plans, proposed drafts, adopted decisions, and public releases distinct.
+
+        When the user's message confirms such a project change and asks only for a brief stand-up or handoff summary, make that check and any authorized update before giving the requested short reply. Skip synchronization for wording-only work on supplied material and hypothetical examples. Use only tools exposed for this workspace. Skip shared writes for read-only, local-only, or do-not-record work, and for queries or edits that add no reusable evidence. Report a saved change or a pending offline sync according to the actual receipt.
+        """;
+
+    internal static void SetServerInfo(McpServerOptions options)
+    {
         options.ServerInfo = new() { Name = "nodicarta", Title = "Nodicarta Edge", Version = Program.ReleaseVersion };
+        options.ServerInstructions = ProjectMemoryInstructions;
+    }
 
     internal static IDisposable UseClientSource(McpServer server)
     {

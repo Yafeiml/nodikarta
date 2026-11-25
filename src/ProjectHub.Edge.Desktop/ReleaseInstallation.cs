@@ -12,13 +12,20 @@ namespace ProjectHub.Edge.Desktop;
 internal static class ReleaseInstallation
 {
     private const string RegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\Nodicarta.Edge";
-    private const string Journal = ".nodicarta-install-transaction.json";
-    private const string Receipt = "public-install.json";
+    private const string Backup = ".nodicarta-install-backup";
+    private const string StagedFile = ".nodicarta-install-write.tmp";
+    private const string StagedJournal = ".nodicarta-install-journal.tmp";
     private const string ReadyPrefix = "Nodicarta.Edge.Install.Ready.";
     private const string ReadyVariable = "NODICARTA_INSTALL_READY_EVENT";
+    internal const int Deferred = 75;
+    private const int Cancelled = 1602;
     private static readonly NamedWaitHandleOptions Session = new() { CurrentUserOnly = true, CurrentSessionOnly = true };
     internal sealed record Registration(string? Root, string? Version, string? Icon);
-    internal sealed record Transaction(string Target, string? PreviousExe, string State, bool WasRunning, byte[]?[] Before, Registration? Registered);
+    internal sealed record RuntimeChange(string Name, string? Before, string? After);
+    internal sealed record Transaction(string State, bool WasRunning, bool Developer, RuntimeChange[] Files, byte[]?[] Links,
+        Registration? Registered, bool Committed = false);
+    private sealed class LeaseBusyException() : IOException("Edge MCP or a local command is still running. Close it before installing.");
+    private sealed class InstallCancelledException : Exception;
     private static bool FixtureBuild => WindowsAotReleaseMetadata.IsFixture;
 
     internal static void SignalReady()
@@ -47,54 +54,47 @@ internal static class ReleaseInstallation
     internal static bool TryRun(string[] args, out int exitCode)
     {
         exitCode = 0;
-        bool setup = args.FirstOrDefault() == "--install-release";
+        if (args.FirstOrDefault() != "--install-release") return false;
         try
         {
-            if (!setup)
-            {
-                if (args.Any(s => s != "--background" && s.StartsWith("--", StringComparison.Ordinal) && s != "--state")) return false;
-                var bin = new DirectoryInfo(AppContext.BaseDirectory);
-                var release = bin.Parent;
-                var parent = release?.Parent;
-                if (bin.Name != "bin" || parent == null || !ReleasePackage.IsId(release!.Name) || !File.Exists(Path.Combine(parent.FullName, Journal)))
-                    return false;
-                using var mutex = InstallMutex();
-                if (!TryLock(mutex)) return false; // The active installer is currently testing this new desktop.
-                try
-                {
-                    var scope = Scope(FixtureBuild && Environment.GetEnvironmentVariable("NODICARTA_EDGE_SETUP_SCOPE") == "fixture" ? "fixture" : "standard");
-                    var old = Recover(parent.FullName, new ReleaseLinks(scope, pathsOnly: true), scope, restart: false);
-                    if (old == null || ReleaseLinks.Same(old.PreviousExe, Environment.ProcessPath)) return false;
-                    if (old.PreviousExe != null) using (Start(old.PreviousExe, old.State, args.Contains("--background"), null)) { }
-                    return true;
-                }
-                finally { mutex.ReleaseMutex(); }
-            }
-
-            if (args is not [_, var input, var action, var scopeName] || !Path.IsPathFullyQualified(input))
+            if (args is not [_, var input, var action, var scopeName, .. var options] || !Path.IsPathFullyQualified(input) ||
+                action is not ("interactive" or "quiet" or "update" or "migrate" or "uninstall" or "developer" or "developer-uninstall") ||
+                options.Length > 1 || options.Length == 1 && (action != "developer" || !Path.IsPathFullyQualified(options[0])))
                 throw new ArgumentException("Invalid installation arguments.");
             var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(input));
             if (ReleaseLinks.Same(root, Path.GetPathRoot(root))) throw new IOException("Choose a dedicated Edge installation directory.");
             CodexAccessFile.CheckPath(root);
             var scopeDirectory = Scope(scopeName);
             using var installLock = InstallMutex();
-            if (!TryLock(installLock)) throw new IOException("Another Edge installation is in progress.");
+            if (!TryLock(installLock))
+            {
+                if (action == "update") { exitCode = Deferred; return true; }
+                throw new IOException("Another Edge installation is in progress.");
+            }
             try
             {
-                Recover(root, new ReleaseLinks(scopeDirectory, pathsOnly: true), scopeDirectory, restart: true);
+                var journal = Path.Combine(root, ReleasePackage.Journal);
+                CodexAccessFile.CheckPath(journal);
+                if (File.Exists(journal))
+                {
+                    using var lease = OpenLease(root, create: true);
+                    Recover(root, new ReleaseLinks(scopeDirectory, pathsOnly: true), scopeDirectory);
+                }
                 var links = new ReleaseLinks(scopeDirectory);
-                if (action == "uninstall") Uninstall(root, links, scopeDirectory);
-                else Install(root, links, scopeDirectory, action);
+                if (action is "uninstall" or "developer-uninstall") Uninstall(root, links, scopeDirectory, action == "developer-uninstall");
+                else Install(root, links, scopeDirectory, action, options.FirstOrDefault());
             }
             finally { installLock.ReleaseMutex(); }
         }
+        catch (InstallCancelledException) { exitCode = Cancelled; }
+        catch (LeaseBusyException) when (args.ElementAtOrDefault(2) == "update") { exitCode = Deferred; }
         catch (Exception error)
         {
             Trace.TraceError("Nodicarta Edge setup: {0}", error.Message);
             var report = Path.Combine(Path.GetTempPath(), "Nodicarta-Edge-Setup.log");
             try { CodexAccessFile.CheckPath(report); File.AppendAllText(report, $"{DateTimeOffset.Now:o} {error.Message}{Environment.NewLine}"); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-            if (setup && args.ElementAtOrDefault(2) == "interactive") MessageBoxW(0, error.Message, "Nodicarta Edge", 0x10);
+            if (args.ElementAtOrDefault(2) == "interactive") MessageBoxW(0, error.Message, "Nodicarta Edge", 0x10);
             exitCode = 1;
         }
         return true;
@@ -106,8 +106,59 @@ internal static class ReleaseInstallation
         try { return mutex.WaitOne(0); } catch (AbandonedMutexException) { return true; }
     }
 
-    private static IEnumerable<string> TrackedFiles(string root, ReleaseLinks links) => links.Paths.Concat(
-        new[] { "active-release", Receipt, ReleasePackage.Cli, "Uninstall.exe" }.Select(name => Path.Combine(root, name)));
+    internal static bool IsLaunchIdle(string root)
+    {
+        try
+        {
+            using var lease = OpenLease(root, create: false);
+            return true;
+        }
+        catch (FileNotFoundException) { return true; }
+        catch (DirectoryNotFoundException) { return true; }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    private static FileStream OpenLease(string root, bool create)
+    {
+        var path = Path.Combine(root, ReleasePackage.Lease);
+        CodexAccessFile.CheckPath(path);
+        try { return File.Open(path, create ? FileMode.OpenOrCreate : FileMode.Open, FileAccess.ReadWrite, FileShare.None); }
+        catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33) { throw new LeaseBusyException(); }
+    }
+
+    private static FileStream OpenInstallLease(string root, string launcher, ReleasePackage? old, string action)
+    {
+        try { return OpenLease(root, create: true); }
+        catch (LeaseBusyException) when (action == "interactive" && old != null && ReleasePackage.IsInstalledLauncher(root, old))
+        {
+            if (!StopInstalledCli(launcher, mcpOnly: true, inspectOnly: true))
+                return OpenLease(root, create: false);
+            var title = UiLanguage.Text("断开 MCP 并更新", "Disconnect MCP and update");
+            var message = UiLanguage.Text(
+                "是否断开此安装的 Edge MCP 会话并继续更新？正在执行的 MCP 请求可能会中断。",
+                "Disconnect this installation's Edge MCP sessions and continue updating? Running MCP requests may be interrupted.");
+            if (MessageBoxW(0, message, title, 0x10134) != 6) throw new InstallCancelledException();
+
+            if (ReleasePackage.Active(root)?.Id != old.Id || !ReleasePackage.IsInstalledLauncher(root, old))
+                throw new IOException("The Edge installation changed during setup.");
+
+            // The installed launcher already checks this barrier before loading the CLI.
+            var journal = Path.Combine(root, ReleasePackage.Journal);
+            CodexAccessFile.CheckPath(journal);
+            using (File.Open(journal, FileMode.CreateNew, FileAccess.Write, FileShare.Read)) { }
+            try
+            {
+                StopInstalledCli(launcher, mcpOnly: true);
+                var wait = Stopwatch.StartNew();
+                while (true)
+                {
+                    try { return OpenLease(root, create: false); }
+                    catch (LeaseBusyException) when (wait.ElapsedMilliseconds < 5000) { Thread.Sleep(50); }
+                }
+            }
+            finally { File.Delete(journal); }
+        }
+    }
 
     private static byte[]? Snapshot(string path)
     {
@@ -126,98 +177,228 @@ internal static class ReleaseInstallation
         ReleasePackage.WriteAtomically(path, bytes);
     }
 
-    private static Transaction? Recover(string root, ReleaseLinks links, string? scope, bool restart)
+    private static bool Digest(string? value) => value == null || value.Length == 64 && value.All(char.IsAsciiHexDigit);
+
+    private static void Recover(string root, ReleaseLinks links, string? scope)
     {
-        var path = Path.Combine(root, Journal);
-        CodexAccessFile.CheckPath(path);
-        if (!File.Exists(path)) return null;
-        if (new FileInfo(path).Length > 16 * 1024 * 1024) throw new InvalidDataException("Invalid pending Edge installation.");
-        var tx = JsonSerializer.Deserialize(File.ReadAllBytes(path), DesktopJson.Default.Transaction) ?? throw new InvalidDataException("Invalid pending Edge installation.");
-        var tracked = TrackedFiles(root, links).ToArray();
-        if (!ReleasePackage.IsId(tx.Target) || tx.Before.Length != tracked.Length || !Path.IsPathFullyQualified(tx.State) ||
-            tx.PreviousExe != null && !ReleaseLinks.IsEdgeDesktop(tx.PreviousExe)) throw new InvalidDataException("Invalid pending Edge paths.");
-        var candidate = Path.Combine(root, tx.Target, "bin", ReleasePackage.Desktop);
-        if (!ReleaseLinks.Same(candidate, tx.PreviousExe)) StopExisting(candidate);
-        for (int i = 0; i < tracked.Length; i++) Restore(tracked[i], tx.Before[i]);
-        RestoreRegistration(root, scope, tx.Registered);
-        File.Delete(path);
-        if (restart && tx.WasRunning && tx.PreviousExe != null && !IsResident(tx.PreviousExe))
-            using (Start(tx.PreviousExe, tx.State, true, null)) { }
-        return tx;
+        var journal = Path.Combine(root, ReleasePackage.Journal);
+        CodexAccessFile.CheckPath(journal);
+        var length = new FileInfo(journal).Length;
+        // Uninstall uses the same launch barrier before it stops running clients.
+        if (length == 0) { File.Delete(journal); return; }
+        if (length > 16 * 1024 * 1024) throw new InvalidDataException("Invalid pending Edge installation.");
+        var tx = JsonSerializer.Deserialize(File.ReadAllBytes(journal), DesktopJson.Default.Transaction) ??
+            throw new InvalidDataException("Invalid pending Edge installation.");
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!Path.IsPathFullyQualified(tx.State) || tx.Links.Length != links.Paths.Length ||
+            tx.Registered != null && !ReleaseLinks.Same(tx.Registered.Root, root) ||
+            tx.Files.Any(file => !(ReleasePackage.IsRuntimePath(file.Name) || file.Name == ReleasePackage.Manifest ||
+                !tx.Developer && file.Name is (ReleasePackage.Receipt or ReleasePackage.Uninstaller)) ||
+                !names.Add(file.Name) || !Digest(file.Before) || !Digest(file.After) || file.Before == file.After))
+            throw new InvalidDataException("Invalid pending Edge paths.");
+
+        var backup = Path.Combine(root, Backup);
+        var stage = Path.Combine(backup, StagedFile);
+        var desktop = Path.Combine(root, ReleasePackage.Desktop);
+        if (!tx.Committed)
+        {
+            StopExisting(desktop);
+            var restore = new List<RuntimeChange>();
+            foreach (var change in tx.Files)
+            {
+                var path = Path.Combine(root, change.Name);
+                var current = CurrentHash(path);
+                if (string.Equals(current, change.Before, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(current, change.After, StringComparison.OrdinalIgnoreCase) ||
+                    change.Before != null && !ReleasePackage.Matches(Path.Combine(backup, change.Name), change.Before))
+                    throw new IOException("Cannot verify the Edge rollback file: " + path);
+                restore.Add(change);
+            }
+            foreach (var change in restore)
+            {
+                var path = Path.Combine(root, change.Name);
+                if (change.Before == null) File.Delete(path);
+                else ReleasePackage.CopyAtomically(Path.Combine(backup, change.Name), path, stage);
+            }
+            ReleasePackage.PruneDirectories(root, restore.Select(change => change.Name));
+            for (int i = 0; i < links.Paths.Length; i++) Restore(links.Paths[i], tx.Links[i]);
+            if (!tx.Developer) RestoreRegistration(root, scope, tx.Registered);
+        }
+        FinishTransaction(journal, backup, tx.Files);
+        if (!tx.Committed && tx.WasRunning && !IsResident(desktop)) using (Start(desktop, tx.State, true, null)) { }
     }
 
-    private static void Install(string root, ReleaseLinks links, string? scope, string action)
+    private static string? CurrentHash(string path)
     {
-        if (action is not ("interactive" or "quiet" or "update" or "migrate")) throw new ArgumentException("Unknown setup action.");
-        var key = DesktopUpdates.PublisherKeyId ?? throw new InvalidOperationException("Missing distribution trust key.");
-        var source = new ReleasePackage(Directory.GetParent(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))!.FullName, false);
+        CodexAccessFile.CheckPath(path);
+        if (Directory.Exists(path)) throw new IOException("A directory occupies this Edge file: " + path);
+        return File.Exists(path) ? ReleasePackage.Hash(path) : null;
+    }
+
+    private static void FinishTransaction(string journal, string backup, RuntimeChange[] files)
+    {
+        CodexAccessFile.CheckPath(backup);
+        if (Directory.Exists(backup))
+        {
+            var stage = Path.Combine(backup, StagedFile);
+            CodexAccessFile.CheckPath(stage);
+            File.Delete(stage);
+            foreach (var file in files)
+            {
+                var saved = Path.Combine(backup, file.Name);
+                CodexAccessFile.CheckPath(saved);
+                if (File.Exists(saved)) File.Delete(saved);
+            }
+            ReleasePackage.PruneDirectories(backup, files.Select(file => file.Name));
+            Directory.Delete(backup);
+        }
+        File.Delete(journal);
+    }
+
+    private static void Install(string root, ReleaseLinks links, string? scope, string action, string? explicitState)
+    {
+        bool developer = action == "developer";
+        var key = DesktopUpdates.PublisherKeyId;
+        if (!developer && key == null) throw new InvalidOperationException("Missing distribution trust key.");
+        var extraction = Directory.GetParent(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory))!.FullName;
+        var source = new ReleasePackage(extraction, bundle: true);
+        source.VerifyBundle();
+        var legacyPointer = Path.Combine(root, "active-release");
+        CodexAccessFile.CheckPath(legacyPointer);
+        if (File.Exists(legacyPointer))
+            throw new IOException("Uninstall the previous Edge installation first. Device data is kept.");
         var old = ReleasePackage.Active(root);
-        var oldExe = old?.Executable ?? links.ExistingDesktop;
-        if (oldExe != null && !ReleaseLinks.IsEdgeDesktop(oldExe)) throw new InvalidDataException("Cannot verify the previous desktop.");
-        var oldMarker = Snapshot(Path.Combine(root, Receipt));
-        if (oldMarker != null) VerifyPublisher(oldMarker, key);
-        var previousMeta = oldExe == null ? null : Path.Combine(Path.GetDirectoryName(oldExe)!, "nodicarta-release.json");
-        bool previousPublic = previousMeta != null && File.Exists(previousMeta);
+        var registration = ReadRegistration(scope);
+        var launcherPath = Path.Combine(root, ReleasePackage.Cli);
+        var desktop = Path.Combine(root, ReleasePackage.Desktop);
+        var last = DesktopRunRecord.Read();
+        var anchor = links.ExistingDesktop;
+        if (registration?.Root != null && !ReleaseLinks.Same(registration.Root, root))
+            throw new IOException("The registered Edge installation is in another directory.");
+        if (developer && registration != null) throw new IOException("A registered Edge install must be managed by its installer.");
+        if (old != null && anchor != null && !ReleaseLinks.Same(anchor, launcherPath) && !ReleaseLinks.Same(anchor, desktop))
+            throw new IOException("The Edge shortcut points to another installation.");
+        var oldExe = old?.Executable;
+        if (old == null && anchor != null && !File.Exists(anchor))
+        {
+            CodexAccessFile.CheckPath(anchor);
+            var existing = Directory.Exists(root) && Directory.EnumerateFileSystemEntries(root)
+                .Any(path => !ReleaseLinks.Same(path, Path.Combine(root, ReleasePackage.Lease)));
+            if (!ReleaseLinks.UnderInstallRoot(root, anchor) || !developer && !ReleaseLinks.Same(registration?.Root, root) ||
+                existing || last != null && !ReleaseLinks.UnderInstallRoot(root, last.Executable) && IsResident(last.Executable))
+                throw new IOException("Cannot establish the installation for the missing Edge shortcut.");
+        }
+        else if (old == null && anchor != null)
+            throw new IOException("The previous Edge shortcut points to a different or unregistered installation.");
+
+        var oldMarker = Snapshot(Path.Combine(root, ReleasePackage.Receipt));
+        if (developer && oldMarker != null) throw new IOException("A public Edge install must be managed by its installer.");
+        if (oldMarker != null) VerifyPublisher(oldMarker, key!);
+        bool previousPublic = oldMarker != null;
+        var repair = old?.Id == source.Id && (developer || previousPublic && ReleaseLinks.Same(registration?.Root, root)) && action != "update";
+        if (oldExe != null && !(repair && !File.Exists(oldExe)) && !ReleaseLinks.IsEdgeDesktop(oldExe))
+            throw new InvalidDataException("Cannot verify the previous desktop.");
+        old?.Verify(allowMissing: repair);
         if (previousPublic)
         {
-            CodexAccessFile.CheckPath(previousMeta!);
-            using var previous = JsonDocument.Parse(File.ReadAllBytes(previousMeta!));
+            if (old == null) throw new IOException("The Edge installation is incomplete. Reinstall the same version.");
+            var previousMeta = Path.Combine(root, "nodicarta-release.json");
+            if (repair && !File.Exists(previousMeta)) previousMeta = Path.Combine(source.DirectoryPath, "nodicarta-release.json");
+            CodexAccessFile.CheckPath(previousMeta);
+            using var previous = JsonDocument.Parse(File.ReadAllBytes(previousMeta));
             if (previous.RootElement.GetProperty("releaseLine").GetString() != "public-v1" ||
                 !ReleaseLinks.Same(previous.RootElement.GetProperty("publisherKeyId").GetString(), key) ||
                 previous.RootElement.GetProperty("channel").GetString() != DesktopUpdates.Channel)
                 throw new IOException("The old release belongs to a different publisher or channel.");
         }
         var version = Version.Parse(Program.ReleaseVersion);
-        var previousVersion = oldExe == null ? null : Version.Parse(FileVersionInfo.GetVersionInfo(oldExe).ProductVersion!.Split('+')[0]);
-        if (action == "update" && (old == null || oldMarker == null || links.ExistingDesktop != null && !ReleaseLinks.Same(oldExe, links.ExistingDesktop) || previousVersion >= version))
+        var previousVersion = repair ? version : oldExe == null ? null :
+            Version.Parse(FileVersionInfo.GetVersionInfo(oldExe).ProductVersion!.Split('+')[0]);
+        if (action == "update" && (old == null || !previousPublic || previousVersion >= version))
             throw new InvalidOperationException("Automatic update requires a newer release of this installed product.");
-        if (oldMarker != null && old == null || (oldMarker != null || previousPublic) && previousVersion > version)
-            throw new IOException("Downgrading or replacing an incomplete public installation is not supported.");
-        if (!previousPublic && oldMarker == null && oldExe != null && previousVersion >= version && action != "migrate")
+        if (previousPublic && previousVersion > version)
+            throw new IOException("Downgrading a public installation is not supported.");
+        if (!developer && !previousPublic && oldExe != null && previousVersion >= version && action != "migrate")
         {
             if (action != "interactive" || MessageBoxW(0, $"将开发版 {previousVersion} 迁移到正式发行版 {version}，沿用当前设备数据？\n\nMigrate development build {previousVersion} to release {version} and keep this device's data?",
                     "Nodicarta Edge", 0x124) != 6) throw new IOException("Development migration requires explicit consent (/MIGRATEDEV).");
         }
-        var last = DesktopRunRecord.Read();
-        var state = oldExe != null && ReleaseLinks.Same(last?.Executable, oldExe) ? last!.StateDirectory :
-            links.ExistingState ?? Program.DefaultStateDirectory;
-        if (links.ExistingState is { } explicitState && !EdgeStatePaths.Same(state, explicitState) &&
-            ReleaseLinks.Same(EdgeStatePaths.Normalize(state), EdgeStatePaths.Normalize(explicitState)))
+        var recordedState = last != null && (ReleaseLinks.Same(last.Executable, oldExe) ||
+            oldExe == null && anchor != null && ReleaseLinks.UnderInstallRoot(root, last.Executable)) ? last.StateDirectory : null;
+        var state = explicitState ?? (oldExe == null ? links.ExistingState ?? recordedState : recordedState ?? links.ExistingState)
+            ?? Program.DefaultStateDirectory;
+        if (links.ExistingState is { } linkedState && recordedState != null && !EdgeStatePaths.Same(recordedState, linkedState) &&
+            ReleaseLinks.Same(EdgeStatePaths.Normalize(recordedState), EdgeStatePaths.Normalize(linkedState)))
             throw new IOException("The last Edge desktop and its shortcuts select independent data directories.");
-        var launcherPath = Path.Combine(root, ReleasePackage.Cli);
-        if (File.Exists(launcherPath) && (old == null || !KnownLauncher(root, ReleasePackage.Hash(launcherPath))))
-            throw new IOException("The MCP launcher belongs to another application.");
-        var uninstallPath = Path.Combine(root, "Uninstall.exe");
-        if (oldMarker == null && File.Exists(uninstallPath)) throw new IOException("An unrelated uninstaller occupies this directory.");
+
+        var incoming = source.Files.ToDictionary(file => file.Key, file => Path.Combine(source.DirectoryPath, file.Key), StringComparer.OrdinalIgnoreCase);
+        incoming.Add(ReleasePackage.Manifest, Path.Combine(extraction, ReleasePackage.Manifest));
+        byte[]? receipt = null;
+        if (!developer)
+        {
+            incoming.Add(ReleasePackage.Uninstaller, Path.Combine(extraction, ReleasePackage.Uninstaller));
+            receipt = JsonSerializer.SerializeToUtf8Bytes(new System.Text.Json.Nodes.JsonObject
+                { ["schema"] = 1, ["product"] = "Nodicarta Edge", ["channel"] = DesktopUpdates.Channel, ["publisher"] = key }, DesktopJson.Default.JsonObject);
+        }
+        var owned = new HashSet<string>(old?.Files.Keys ?? [], StringComparer.OrdinalIgnoreCase);
+        if (old != null) owned.Add(ReleasePackage.Manifest);
+        if (previousPublic) { owned.Add(ReleasePackage.Receipt); owned.Add(ReleasePackage.Uninstaller); }
+        var after = source.Files.ToDictionary(file => file.Key, file => file.Value, StringComparer.OrdinalIgnoreCase);
+        after.Add(ReleasePackage.Manifest, source.Id);
+        if (receipt != null)
+        {
+            after.Add(ReleasePackage.Uninstaller, ReleasePackage.Hash(incoming[ReleasePackage.Uninstaller]));
+            after.Add(ReleasePackage.Receipt, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(receipt)));
+        }
+        var journal = Path.Combine(root, ReleasePackage.Journal);
+        var backup = Path.Combine(root, Backup);
+        var stage = Path.Combine(backup, StagedFile);
+        CodexAccessFile.CheckPath(backup);
+        if (Directory.Exists(backup) || File.Exists(backup)) throw new IOException("An unexpected Edge installation backup remains.");
         Directory.CreateDirectory(root);
-        var installed = source.InstallInto(root);
+        using var lease = OpenInstallLease(root, launcherPath, old, action);
+        if (ReleasePackage.Active(root)?.Id != old?.Id) throw new IOException("The Edge installation changed during setup.");
+        var files = new List<RuntimeChange>();
+        foreach (var name in owned.Union(after.Keys, StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
+        {
+            var path = Path.Combine(root, name);
+            var current = CurrentHash(path);
+            if (current != null && !owned.Contains(name)) throw new IOException("An unrelated file occupies this Edge path: " + path);
+            after.TryGetValue(name, out var digest);
+            if (!string.Equals(current, digest, StringComparison.OrdinalIgnoreCase)) files.Add(new(name, current, digest));
+        }
         bool alreadyRunning = oldExe != null && IsResident(oldExe);
-        var tx = new Transaction(installed.Id, oldExe, state, alreadyRunning, TrackedFiles(root, links).Select(Snapshot).ToArray(), ReadRegistration(scope));
-        ReleasePackage.WriteAtomically(Path.Combine(root, Journal), JsonSerializer.SerializeToUtf8Bytes(tx, DesktopJson.Default.Transaction));
+        if (developer && files.Count == 0 && alreadyRunning && ReleaseLinks.Same(anchor, launcherPath) &&
+            links.ExistingState is { } linked && EdgeStatePaths.Same(state, linked)) return;
+
+        var tx = new Transaction(state, alreadyRunning, developer, files.ToArray(), links.Paths.Select(Snapshot).ToArray(), registration);
+        ReleasePackage.WriteAtomically(journal, JsonSerializer.SerializeToUtf8Bytes(tx, DesktopJson.Default.Transaction),
+            Path.Combine(root, StagedJournal));
         try
         {
+            foreach (var file in tx.Files)
+                if (file.Before != null) ReleasePackage.CopyAtomically(Path.Combine(root, file.Name), Path.Combine(backup, file.Name), stage);
             if (alreadyRunning) StopExisting(oldExe!);
-            var launcher = Path.Combine(installed.DirectoryPath, "bin", ReleasePackage.Launcher);
-            if (!File.Exists(launcherPath) || !installed.MatchesLauncher(ReleasePackage.Hash(launcherPath)))
+            foreach (var file in tx.Files)
             {
-                try { ReleasePackage.WriteAtomically(launcherPath, File.ReadAllBytes(launcher)); }
-                catch (IOException) when (old != null && File.Exists(launcherPath) && KnownLauncher(root, ReleasePackage.Hash(launcherPath))) { }
+                var path = Path.Combine(root, file.Name);
+                if (file.After == null) File.Delete(path);
+                else if (file.Name == ReleasePackage.Receipt) ReleasePackage.WriteAtomically(path, receipt!, stage);
+                else ReleasePackage.CopyAtomically(incoming[file.Name], path, stage);
             }
-            ReleasePackage.WriteAtomically(Path.Combine(root, "active-release"), Encoding.ASCII.GetBytes(installed.Id));
-            ReleasePackage.WriteAtomically(Path.Combine(root, Receipt), JsonSerializer.SerializeToUtf8Bytes(new System.Text.Json.Nodes.JsonObject
-                { ["schema"] = 1, ["product"] = "Nodicarta Edge", ["channel"] = DesktopUpdates.Channel, ["publisher"] = key }, DesktopJson.Default.JsonObject));
-            var embeddedUninstaller = Path.Combine(source.DirectoryPath, "Uninstall.exe");
-            ReleasePackage.WriteAtomically(uninstallPath, File.ReadAllBytes(embeddedUninstaller));
-            links.SetTarget(installed.Executable, state);
-            StartAndCheck(installed.Executable, state, action != "interactive");
-            Register(root, scope, version.ToString(), installed.Executable);
-            File.Delete(Path.Combine(root, Journal));
+            new ReleasePackage(root).Verify();
+            links.SetTarget(launcherPath, state);
+            StartAndCheck(desktop, state, action != "interactive");
+            if (!developer) Register(root, scope, version.ToString(), launcherPath);
+            ReleasePackage.WriteAtomically(journal, JsonSerializer.SerializeToUtf8Bytes(tx with { Committed = true }, DesktopJson.Default.Transaction), stage);
         }
         catch
         {
-            Recover(root, links, scope, restart: true);
+            Recover(root, links, scope);
             throw;
         }
+        FinishTransaction(journal, backup, tx.Files);
+        ReleasePackage.PruneDirectories(root, tx.Files.Where(file => file.After == null).Select(file => file.Name));
     }
 
     private static void VerifyPublisher(byte[] receipt, string expectedKey)
@@ -228,8 +409,6 @@ internal static class ReleaseInstallation
             node.GetProperty("channel").GetString() != DesktopUpdates.Channel ||
             !ReleaseLinks.Same(node.GetProperty("publisher").GetString(), expectedKey)) throw new IOException("Different update publisher or channel.");
     }
-
-    private static bool KnownLauncher(string root, string hash) => ReleasePackage.Installed(root).Any(package => package.MatchesLauncher(hash));
 
     private static Process? Resident(string path)
     {
@@ -251,9 +430,14 @@ internal static class ReleaseInstallation
     {
         using var owner = Resident(path);
         if (owner == null) return;
-        if (EventWaitHandle.TryOpenExisting(DesktopInstance.Name + ".Retire", Session, out var retire))
-            using (retire) retire.Set();
-        if (!owner.WaitForExit(15000)) throw new IOException("Quit the current Edge desktop from the tray and try again.");
+        var deadline = Stopwatch.StartNew();
+        do
+        {
+            if (EventWaitHandle.TryOpenExisting(DesktopInstance.Name + ".Retire", Session, out var retire))
+                using (retire) retire.Set();
+            if (owner.WaitForExit(100)) return;
+        } while (deadline.ElapsedMilliseconds < 15000);
+        throw new IOException("Quit the current Edge desktop from the tray and try again.");
     }
 
     private static Process Start(string exe, string state, bool background, string? ready)
@@ -325,110 +509,133 @@ internal static class ReleaseInstallation
         key.SetValue("NoModify", 1); key.SetValue("NoRepair", 1);
     }
 
-    private static void Uninstall(string root, ReleaseLinks links, string? scope)
+    private static void Uninstall(string root, ReleaseLinks links, string? scope, bool developer)
     {
         var actual = ReleasePackage.Active(root) ?? throw new IOException("Could not identify this installation.");
-        VerifyPublisher(File.ReadAllBytes(Path.Combine(root, Receipt)), DesktopUpdates.PublisherKeyId ?? "");
-        var packages = ReleasePackage.Installed(root).ToArray();
-        if (packages.All(package => package.Id != actual.Id)) throw new IOException("Could not verify the currently installed release.");
+        var receipt = Path.Combine(root, ReleasePackage.Receipt);
+        var uninstaller = Path.Combine(root, ReleasePackage.Uninstaller);
+        var registration = ReadRegistration(scope);
+        if (developer && (File.Exists(receipt) || registration != null))
+            throw new IOException("A public Edge install must be managed by its installer.");
+        if (!developer)
+        {
+            if (!ReleaseLinks.Same(registration?.Root, root)) throw new IOException("The registered Edge installation is in another directory.");
+            VerifyPublisher(Snapshot(receipt) ?? throw new IOException("Could not identify this installation."), DesktopUpdates.PublisherKeyId ?? "");
+        }
         string launcher = Path.Combine(root, ReleasePackage.Cli);
-        if (!KnownLauncher(root, ReleasePackage.Hash(launcher))) throw new IOException("Unrecognized MCP launcher.");
-        var cliPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { launcher };
-        foreach (var package in packages)
+        if (!ReleasePackage.IsInstalledLauncher(root, actual)) throw new IOException("Unrecognized MCP launcher.");
+        var leasePath = Path.Combine(root, ReleasePackage.Lease);
+        var journal = Path.Combine(root, ReleasePackage.Journal);
+        CodexAccessFile.CheckPath(leasePath);
+        CodexAccessFile.CheckPath(uninstaller);
+        if (!File.Exists(leasePath)) throw new IOException("The installed Edge launch lock is missing.");
+        ReleasePackage.WriteAtomically(journal, [], Path.Combine(root, StagedJournal));
+        try
         {
-            var cli = Path.Combine(package.DirectoryPath, "bin", ReleasePackage.Cli);
-            if (File.Exists(cli) && package.MatchesCli(ReleasePackage.Hash(cli))) cliPaths.Add(cli);
-        }
-        using (BlockLauncher(Path.Combine(root, "active-release")))
-        {
-            StopExisting(actual.Executable);
-            StopInstalledCli(cliPaths);
-            if (ReleaseLinks.Same(links.ExistingDesktop, actual.Executable))
-                foreach (var link in links.Paths) if (File.Exists(link)) File.Delete(link);
-            foreach (var package in packages) package.RemoveInstalledFiles();
-            foreach (var name in new[] { ReleasePackage.Cli, "active-release", Receipt, "Uninstall.exe" }) File.Delete(Path.Combine(root, name));
-        }
-        var cache = Path.Combine(root, "updates");
-        CodexAccessFile.CheckPath(cache);
-        if (Directory.Exists(cache))
-        {
-            foreach (var path in Directory.EnumerateFiles(cache))
+            StopInstalledCli(launcher);
+            using (OpenLease(root, create: false))
             {
-                var name = Path.GetFileName(path);
-                if (name != "last-attempt")
+                StopExisting(actual.Executable);
+                if (ReleaseLinks.Same(links.ExistingDesktop, launcher) || ReleaseLinks.Same(links.ExistingDesktop, actual.Executable))
+                    foreach (var link in links.Paths) if (File.Exists(link)) File.Delete(link);
+                actual.RemoveInstalledFiles();
+                if (!developer)
                 {
-                    if (name.EndsWith(".attempt", StringComparison.Ordinal)) name = name[..^8];
-                    if (!name.StartsWith("setup-", StringComparison.Ordinal) || !name.EndsWith(".exe", StringComparison.Ordinal) ||
-                        name.Length != 42 || !Guid.TryParseExact(name[6..^4], "N", out _)) continue;
+                    File.Delete(receipt);
+                    File.Delete(uninstaller);
+                    RestoreRegistration(root, scope, null);
+                    RemoveDownloads(root);
                 }
-                CodexAccessFile.CheckPath(path);
-                File.Delete(path);
             }
-            if (!Directory.EnumerateFileSystemEntries(cache).Any()) Directory.Delete(cache);
+            File.Delete(leasePath);
         }
-        if (scope != null) File.Delete(Path.Combine(scope, "install-location"));
-        else
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
-            if (ReleaseLinks.Same(key?.GetValue("InstallLocation") as string, root)) Registry.CurrentUser.DeleteSubKey(RegistryPath, throwOnMissingSubKey: false);
-        }
+        finally { File.Delete(journal); }
         if (!Directory.EnumerateFileSystemEntries(root).Any()) Directory.Delete(root);
     }
 
-    private static FileStream BlockLauncher(string pointer)
+    private static void RemoveDownloads(string root)
     {
-        // Both launcher generations read this pointer at start. The handle denies new reads
-        // while allowing removal and releases the guard automatically if uninstall fails.
-        var watch = Stopwatch.StartNew();
-        while (true)
+        var cache = DesktopUpdates.CacheFor(root);
+        CodexAccessFile.CheckPath(cache);
+        if (!Directory.Exists(cache)) return;
+        foreach (var path in Directory.EnumerateFiles(cache))
         {
-            try { return File.Open(pointer, FileMode.Open, FileAccess.Read, FileShare.Delete); }
-            catch (IOException ex) when (ex.HResult == unchecked((int)0x80070020) && watch.ElapsedMilliseconds < 3000)
-            { Thread.Sleep(40); }
+            var name = Path.GetFileName(path);
+            if (name != "last-attempt")
+            {
+                if (name.EndsWith(".attempt", StringComparison.Ordinal)) name = name[..^8];
+                if (!name.StartsWith("setup-", StringComparison.Ordinal) || !name.EndsWith(".exe", StringComparison.Ordinal) ||
+                    name.Length != 42 || !Guid.TryParseExact(name[6..^4], "N", out _)) continue;
+            }
+            CodexAccessFile.CheckPath(path);
+            File.Delete(path);
         }
+        if (!Directory.EnumerateFileSystemEntries(cache).Any()) Directory.Delete(cache);
     }
 
-    private static void StopInstalledCli(HashSet<string> paths)
+    private static bool StopInstalledCli(string launcher, bool mcpOnly = false, bool inspectOnly = false)
     {
         const uint query = 0x1000, terminate = 0x0001, synchronize = 0x00100000;
         using var user = WindowsIdentity.GetCurrent();
+        using var self = Process.GetCurrentProcess();
         var image = new StringBuilder(32768);
         var watch = Stopwatch.StartNew();
         while (true)
         {
-            bool stoppedAny = false;
-            foreach (var cli in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(ReleasePackage.Cli)))
+            var clients = new List<(int Id, SafeProcessHandle Handle)>();
+            try
             {
-                using (cli)
-                using (var process = OpenProcess(query | terminate | synchronize, false, cli.Id))
+                foreach (var cli in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(ReleasePackage.Cli)))
                 {
-                    if (process.IsInvalid)
+                    using (cli)
                     {
-                        using var inspect = OpenProcess(query, false, cli.Id);
-                        if (IsInstalledCli(inspect)) throw CannotStop(cli.Id);
-                        continue;
+                        var process = OpenProcess(query | terminate | synchronize, false, cli.Id);
+                        bool keep = false;
+                        try
+                        {
+                            if (process.IsInvalid)
+                            {
+                                using var inspect = OpenProcess(query, false, cli.Id);
+                                if (IsInstalledCli(inspect)) throw CannotStop(cli.Id);
+                                continue;
+                            }
+                            if (!IsInstalledCli(process) || WaitForSingleObject(process, 0) == 0) continue;
+                            if (mcpOnly && (cli.SessionId != self.SessionId || !ReleaseLinks.IsMcpCommand(process)))
+                            {
+                                if (WaitForSingleObject(process, 0) == 0) continue;
+                                throw new IOException(UiLanguage.Text(
+                                    "仍有 Edge 本地命令或无法确认的会话正在运行。请等它结束后重试更新。",
+                                    "An Edge local command or an unverified session is still running. Let it finish and retry the update."));
+                            }
+                            clients.Add((cli.Id, process));
+                            keep = true;
+                        }
+                        finally { if (!keep) process.Dispose(); }
                     }
-                    if (!IsInstalledCli(process)) continue;
+                }
+                if (inspectOnly || clients.Count == 0) return clients.Count != 0;
+                foreach (var (id, process) in clients)
+                {
                     // The verified process handle also performs termination, even if its PID is recycled.
-                    if (!TerminateProcess(process, 1) && WaitForSingleObject(process, 0) != 0) throw CannotStop(cli.Id);
+                    if (!TerminateProcess(process, 1) && WaitForSingleObject(process, 0) != 0) throw CannotStop(id);
                     if (WaitForSingleObject(process, (uint)Math.Max(0, 5000 - watch.ElapsedMilliseconds)) != 0)
-                        throw CannotStop(cli.Id);
-                    stoppedAny = true;
+                        throw CannotStop(id);
                 }
             }
-            if (!stoppedAny) return;
-            if (watch.ElapsedMilliseconds >= 5000) throw new IOException("Edge MCP sessions kept restarting during uninstall. Pause the client's MCP reconnect and try again.");
+            finally { foreach (var (_, process) in clients) process.Dispose(); }
+            if (watch.ElapsedMilliseconds >= 5000)
+                throw new IOException("Edge MCP sessions kept restarting. Pause the client's MCP reconnect and try again.");
         }
 
         bool IsInstalledCli(SafeProcessHandle process)
         {
             int length = image.Capacity;
-            if (process.IsInvalid || !QueryFullProcessImageNameW(process, 0, image, ref length) || !paths.Contains(image.ToString())) return false;
+            if (process.IsInvalid || !QueryFullProcessImageNameW(process, 0, image, ref length) || !ReleaseLinks.Same(launcher, image.ToString())) return false;
             if (!OpenProcessToken(process, (uint)TokenAccessLevels.Query, out var token))
             {
                 int error = Marshal.GetLastPInvokeError();
                 token.Dispose();
-                if (error == 5) throw new IOException("Could not verify the owner of an Edge MCP process during uninstall.");
+                if (error == 5) throw new IOException("Could not verify the owner of an Edge process.");
                 return false;
             }
             using (token)
@@ -436,7 +643,7 @@ internal static class ReleaseInstallation
                 return Equals(owner.User, user.User);
         }
 
-        static IOException CannotStop(int pid) => new($"Could not stop Edge MCP process {pid}. Close that session and try uninstalling again.");
+        static IOException CannotStop(int pid) => new($"Could not stop Edge process {pid}. Close that session and try again.");
     }
 
     [DllImport("kernel32.dll", SetLastError = true)]

@@ -2,75 +2,82 @@
 #:property AssemblyName=ProjectHub.Edge.AccessChecks
 #:property PublishAot=false
 #:project ../src/ProjectHub.Edge.Desktop/ProjectHub.Edge.Desktop.csproj
-using System.Text;
+using System.Reflection;
+using System.Text.Json;
 using ProjectHub.Edge.Desktop;
 
-var work = Directory.CreateTempSubdirectory("nodicarta-release-history-");
+var work = Directory.CreateTempSubdirectory("nodicarta-flat-release-");
 try
 {
-    string Add(string name, params string[] files)
+    var root = work.CreateSubdirectory("installed").FullName;
+    var scope = work.CreateSubdirectory("isolated").FullName;
+    ReleasePackage Bundle(string name)
     {
-        var folder = Path.Combine(work.FullName, name);
-        var bin = Directory.CreateDirectory(Path.Combine(folder, "bin"));
-        var manifest = Path.Combine(folder, "SHA256SUMS");
+        var folder = work.CreateSubdirectory(name);
+        var bin = folder.CreateSubdirectory("bin");
+        bin.CreateSubdirectory("Assets");
         var entries = new List<string>();
-        foreach (var file in files)
+        foreach (var file in new[] { ReleasePackage.Desktop, ReleasePackage.Cli, ReleasePackage.NativeCli, "Assets/product.txt" })
         {
             var path = Path.Combine(bin.FullName, file);
             File.WriteAllText(path, name + " " + file);
             entries.Add(ReleasePackage.Hash(path) + "  " + file);
         }
-        File.WriteAllLines(manifest, entries, new UTF8Encoding(false));
-        var id = ReleasePackage.Hash(manifest)[..12].ToLowerInvariant();
-        Directory.Move(folder, Path.Combine(work.FullName, id));
-        return id;
+        File.WriteAllLines(Path.Combine(folder.FullName, ReleasePackage.Manifest), entries);
+        var package = new ReleasePackage(folder.FullName, bundle: true);
+        package.VerifyBundle();
+        return package;
     }
-    var legacy = Add("legacy", ReleasePackage.Desktop, ReleasePackage.Cli);
-    var older = Add("older", ReleasePackage.Desktop, ReleasePackage.Cli, ReleasePackage.Launcher);
-    var latest = Add("latest", ReleasePackage.Desktop, ReleasePackage.Cli, ReleasePackage.Launcher);
-    var foreign = Directory.CreateDirectory(Path.Combine(work.FullName, "000000000000"));
-    File.WriteAllText(Path.Combine(foreign.FullName, "personal.txt"), "keep");
-    var history = ReleasePackage.Installed(work.FullName).ToArray();
-    if (!history.Select(p => p.Id).ToHashSet().SetEquals([legacy, older, latest]))
-        throw new Exception("Historical desktop releases were not distinguished from an unrelated directory.");
-    var launcherHash = ReleasePackage.Hash(Path.Combine(work.FullName, older, "bin", ReleasePackage.Launcher));
-    if (!history.Where(p => p.MatchesLauncher(launcherHash)).Select(p => p.Id).SequenceEqual([older]))
-        throw new Exception("Could not identify the installed root launcher by its actual historical hash.");
-    foreach (var item in history) item.Verify();
-    try
-    {
-        history.Single(p => p.Id == legacy).InstallInto(Path.Combine(work.FullName, "new root"));
-        throw new Exception("New distributions must still contain a launcher.");
-    }
+
+    var previous = Bundle("previous");
+    var next = Bundle("next");
+    foreach (var name in previous.Files.Keys)
+        ReleasePackage.CopyAtomically(Path.Combine(previous.DirectoryPath, name), Path.Combine(root, name));
+    ReleasePackage.CopyAtomically(Path.Combine(work.FullName, "previous", ReleasePackage.Manifest), Path.Combine(root, ReleasePackage.Manifest));
+    var installed = ReleasePackage.Active(root)!;
+    Check(installed.Id == previous.Id && ReleasePackage.IsInstalledLauncher(root, installed) &&
+        installed.Executable == Path.Combine(root, ReleasePackage.Desktop), "the installation manifest owns the single root runtime");
+    installed.Verify();
+    var userFile = Path.Combine(root, "Assets", "user.txt");
+    File.WriteAllText(userFile, "keep");
+
+    var lease = Path.Combine(root, ReleasePackage.Lease);
+    File.WriteAllBytes(lease, []);
+    using (File.Open(lease, FileMode.Open, FileAccess.Read, FileShare.Read))
+        Check(!ReleaseInstallation.IsLaunchIdle(root), "an open MCP read lease defers the update");
+    Check(ReleaseInstallation.IsLaunchIdle(root), "the update can resume after the MCP exits");
+
+    var recovery = typeof(ReleaseInstallation).GetMethod("Recover", BindingFlags.NonPublic | BindingFlags.Static)!;
+    var links = new ReleaseLinks(scope, pathsOnly: true);
+    var change = new ReleaseInstallation.RuntimeChange(
+        ReleasePackage.NativeCli, previous.Files[ReleasePackage.NativeCli], next.Files[ReleasePackage.NativeCli]);
+    var untouched = new ReleaseInstallation.RuntimeChange(
+        ReleasePackage.Desktop, previous.Files[ReleasePackage.Desktop], next.Files[ReleasePackage.Desktop]);
+    var missing = new ReleaseInstallation.RuntimeChange("new/folder/file.txt", null, next.Files[ReleasePackage.Desktop]);
+    var tx = new ReleaseInstallation.Transaction(scope, false, true, [change, untouched, missing], new byte[]?[links.Paths.Length], null);
+    var journal = Path.Combine(root, ReleasePackage.Journal);
+    var backup = Directory.CreateDirectory(Path.Combine(root, ".nodicarta-install-backup")).FullName;
+    var native = Path.Combine(root, ReleasePackage.NativeCli);
+    ReleasePackage.CopyAtomically(native, Path.Combine(backup, ReleasePackage.NativeCli));
+    ReleasePackage.CopyAtomically(Path.Combine(next.DirectoryPath, ReleasePackage.NativeCli), native);
+    File.WriteAllText(Path.Combine(backup, ".nodicarta-install-write.tmp"), "interrupted copy");
+    File.WriteAllBytes(journal, JsonSerializer.SerializeToUtf8Bytes(tx, DesktopJson.Default.Transaction));
+    recovery.Invoke(null, [root, links, scope]);
+    installed.Verify();
+    Check(!File.Exists(journal) && !Directory.Exists(backup) && File.ReadAllText(userFile) == "keep",
+        "replaying a partially written transaction restores the original runtime without leaving a backup or discarding user files");
+
+    File.WriteAllText(installed.Executable, "locally changed");
+    try { installed.Verify(); throw new Exception("Verification accepted a changed payload."); }
     catch (InvalidDataException) { }
-    File.WriteAllText(Path.Combine(work.FullName, legacy, "bin", ReleasePackage.Desktop), "changed");
-    try { history.Single(p => p.Id == legacy).Verify(); throw new Exception("Changed legacy payload would be removed."); }
-    catch (InvalidDataException) { }
-    var legacyDir = Path.Combine(work.FullName, legacy);
-    File.WriteAllText(Path.Combine(legacyDir, "bin.rar"), "user archive");
-    File.WriteAllText(Path.Combine(legacyDir, "bin", "user-settings.txt"), "user file");
-    history.Single(p => p.Id == legacy).RemoveInstalledFiles();
-    if (File.ReadAllText(Path.Combine(legacyDir, "bin.rar")) != "user archive" ||
-        File.ReadAllText(Path.Combine(legacyDir, "bin", "user-settings.txt")) != "user file" ||
-        File.ReadAllText(Path.Combine(legacyDir, "bin", ReleasePackage.Desktop)) != "changed" ||
-        File.Exists(Path.Combine(legacyDir, "bin", ReleasePackage.Cli)))
-        throw new Exception("Uninstall did not distinguish original and user files.");
-    var latestDir = Path.Combine(work.FullName, latest);
-    File.WriteAllText(Path.Combine(latestDir, "bin.rar"), "archive");
-    var stash = Directory.CreateDirectory(Path.Combine(work.FullName, "backup")).FullName;
-    var backup = history.Single(p => p.Id == latest).InstallInto(stash);
-    history.Single(p => p.Id == latest).RemoveInstalledFiles();
-    backup.InstallInto(work.FullName).Verify();
-    if (File.ReadAllText(Path.Combine(latestDir, "bin.rar")) != "archive")
-        throw new Exception("Reinstall lost the user's sibling archive.");
-    Console.WriteLine("PASS: mixed release generations, exact launcher ownership, unrelated folder exclusion, legacy uninstall verification, strict new payload.");
-    if (args.Length == 1)
-    {
-        var installed = ReleasePackage.Installed(args[0]).ToArray();
-        var current = ReleasePackage.Hash(Path.Combine(args[0], ReleasePackage.Cli));
-        if (!installed.Any(p => p.MatchesLauncher(current))) throw new Exception("Current root launcher could not be identified.");
-        Console.WriteLine($"READ ONLY: {installed.Length} history manifests, {installed.Count(p => p.MatchesLauncher(current))} match the current launcher.");
-    }
-    return 0;
+    installed.RemoveInstalledFiles();
+    Check(ReleasePackage.Active(root) == null && !File.Exists(native) && File.ReadAllText(userFile) == "keep" &&
+          File.ReadAllText(installed.Executable) == "locally changed", "uninstall only removes owned, verified payload files");
+    Console.WriteLine("PASS: flat manifest, MCP update deferral, interrupted recovery and owned-file uninstall.");
 }
 finally { work.Delete(true); }
+
+static void Check(bool condition, string message)
+{
+    if (!condition) throw new InvalidOperationException(message);
+}

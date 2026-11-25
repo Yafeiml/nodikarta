@@ -74,40 +74,39 @@ try
     File.WriteAllBytes(old, []);
     var moved = HarnessJson.Inspect(opencode, commented, old, state, out var movedAction, HarnessEdit.Repair);
     Check(movedAction == "已接入" && moved != commented && moved.Contains("/* executable */"), "自动迁移保留服务器条目内的注释");
-    // A verified install root keeps a single launcher even while its old version is still on disk.
+    // Replacing runtime files leaves the registered command at the same path.
     var installRoot = Directory.CreateDirectory(Path.Combine(root, "Nodicarta")).FullName;
     var stable = Path.Combine(installRoot, "ProjectHub.Edge.exe");
     var launcherBytes = "installation launcher"u8.ToArray();
     File.WriteAllBytes(stable, launcherBytes);
-    string Release(string version)
+    File.WriteAllBytes(Path.Combine(installRoot, ".edge-lease"), []);
+    void Release(string version)
     {
         var bytes = System.Text.Encoding.UTF8.GetBytes(version);
-        var manifest = System.Text.Encoding.UTF8.GetBytes(Convert.ToHexString(SHA256.HashData(bytes)) + "  ProjectHub.Edge.exe\n" +
-            Convert.ToHexString(SHA256.HashData(launcherBytes)) + "  Nodicarta.Edge.Launcher.exe\n");
-        var releaseId = Convert.ToHexString(SHA256.HashData(manifest))[..12].ToLowerInvariant();
-        var release = Directory.CreateDirectory(Path.Combine(installRoot, releaseId)).FullName;
-        File.WriteAllBytes(Path.Combine(release, "SHA256SUMS"), manifest);
-        var path = Path.Combine(Directory.CreateDirectory(Path.Combine(release, "bin")).FullName, "ProjectHub.Edge.exe");
-        File.WriteAllBytes(path, bytes);
-        File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(path)!, "Nodicarta.Edge.Launcher.exe"), launcherBytes);
-        return path;
+        var digest = Convert.ToHexString(SHA256.HashData(bytes));
+        var manifest = System.Text.Encoding.UTF8.GetBytes($"{digest}  {ReleasePackage.Desktop}\n{digest}  {ReleasePackage.NativeCli}\n" +
+            Convert.ToHexString(SHA256.HashData(launcherBytes)) + $"  {ReleasePackage.Cli}\n");
+        File.WriteAllBytes(Path.Combine(installRoot, "SHA256SUMS"), manifest);
+        File.WriteAllBytes(Path.Combine(installRoot, ReleasePackage.Desktop), bytes);
+        File.WriteAllBytes(Path.Combine(installRoot, ReleasePackage.NativeCli), bytes);
     }
-    var v1 = Release("first");
-    var v2 = Release("second");
-    File.WriteAllText(Path.Combine(installRoot, "active-release"), Directory.GetParent(Path.GetDirectoryName(v2)!)!.Name);
+    Release("first");
+    Check(EdgeInstallCommand.DesktopEntry(Path.Combine(installRoot, ReleasePackage.Desktop)) == stable, "桌面和 MCP 使用固定入口");
+    Release("second");
+    Check(EdgeInstallCommand.DesktopEntry(Path.Combine(installRoot, ReleasePackage.Desktop)) == stable, "更换运行文件后入口保持固定");
     foreach (var target in standard)
     {
-        var legacy = HarnessJson.Copy(target, v1, state).Replace("\"nodicarta\":", "\"projecthub\":");
+        var legacy = HarnessJson.Copy(target, stable, state).Replace("\"nodicarta\":", "\"projecthub\":");
         var migratedEntry = HarnessJson.Inspect(target, legacy, stable, state, out var ready, HarnessEdit.Repair);
         var expected = HarnessJson.Copy(target, stable, state).Replace("\"nodicarta\":", "\"projecthub\":");
         Check(ready == "已接入" && JsonNode.DeepEquals(JsonNode.Parse(migratedEntry), JsonNode.Parse(expected)),
-            target.Name + " 仍存在的同安装旧程序自动迁移");
+            target.Name + " 切换版本后保留固定启动路径");
         Directory.CreateDirectory(Path.GetDirectoryName(target.ConfigPath)!);
         File.WriteAllText(target.ConfigPath, HarnessJson.Copy(target, old, state));
     }
-    var oldYaml = SpecialHarnesses.CopyDeepSeek(v1, state);
+    var oldYaml = SpecialHarnesses.CopyDeepSeek(stable, state);
     Check(SpecialHarnesses.Change(oldYaml, stable, state, out var yamlStatus, HarnessEdit.Repair) ==
-        SpecialHarnesses.CopyDeepSeek(stable, state) && yamlStatus == "已接入", "DeepSeek 同安装旧路径自动迁移");
+        SpecialHarnesses.CopyDeepSeek(stable, state) && yamlStatus == "已接入", "DeepSeek 切换版本后保留固定启动路径");
     var yamlFile = Path.Combine(Environment.GetEnvironmentVariable("DSH_HOME")!, "cordis.patch.yml");
     Directory.CreateDirectory(Path.GetDirectoryName(yamlFile)!);
     File.WriteAllText(yamlFile, SpecialHarnesses.CopyDeepSeek(old, state));

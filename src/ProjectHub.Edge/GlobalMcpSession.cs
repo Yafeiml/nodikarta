@@ -85,7 +85,11 @@ internal sealed class GlobalMcpSession
         { return GlobalToolAccess.Denied("unavailable", "暂时无法确认目录、项目或 Core 状态，请在 Edge 核对接入。"); }
     }
 
-    private sealed record ClientRoot(string? Directory, string? Diagnostic = null);
+    private sealed record ClientRoot(string? Directory, string? Diagnostic = null, bool Conflicting = false)
+    {
+        internal bool ConflictsWith(string directory) => Conflicting ||
+            Directory != null && !string.Equals(Directory, directory, StringComparison.Ordinal);
+    }
 
     private static string? LocalRootDirectory(string value)
     {
@@ -103,6 +107,24 @@ internal sealed class GlobalMcpSession
         if (path.Length < 3 || !char.IsAsciiLetter(path[0]) || path[1] != ':' || path[2] is not ('/' or '\\'))
             return null;
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(char.ToUpperInvariant(path[0]) + path[1..]));
+    }
+
+    private static bool IsClaudeCoworkUploadRoot(string directory)
+    {
+        var local = Environment.GetEnvironmentVariable("LOCALAPPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(local) || !Path.IsPathFullyQualified(local)) return false;
+        var path = Path.GetRelativePath(local, directory).Split(Path.DirectorySeparatorChar);
+        static bool Is(string actual, string expected) => actual.Equals(expected, StringComparison.OrdinalIgnoreCase);
+        static bool IsSessionId(string part) => part.Length == 8 && part.All(char.IsAsciiHexDigit);
+        var profile = path switch
+        {
+            [var name, _, _, _, _, _] when Is(name, "Claude-3p") || Is(name, "Claude") => 1,
+            [var name, var family, _, _, _, _, _] when Is(name, "Claude-Data") && Is(family, "claude_pzs8sxrjxfjjc") => 2,
+            _ => 0
+        };
+        return profile != 0 && Is(path[profile], "local-agent-mode-sessions") &&
+            Is(path[^1], "uploads") &&
+            IsSessionId(path[profile + 1]) && IsSessionId(path[profile + 2]) && IsSessionId(path[profile + 3]);
     }
 
     internal static async Task RunAsync(EdgeSession session, string? workspaceVariable, bool useRoots, CancellationToken ct, Guid? expectedWorkspace = null)
@@ -123,14 +145,18 @@ internal sealed class GlobalMcpSession
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
             timeout.CancelAfter(TimeSpan.FromSeconds(5));
             var roots = await server.RequestRootsAsync(new(), timeout.Token);
+            var cowork = OperatingSystem.IsWindows() &&
+                server.ClientInfo?.Name.StartsWith("local-agent-mode-", StringComparison.Ordinal) == true;
             string? selected = null;
             foreach (var root in roots.Roots)
             {
                 var directory = LocalRootDirectory(root.Uri);
                 if (directory == null)
                     return new(null, "客户端提供的工作目录地址不受支持。请打开本机已绑定的文件夹。");
+                // Cowork adds an internal uploads root when a task starts. Keep any explicitly bound root.
+                if (cowork && IsClaudeCoworkUploadRoot(directory) && session.MatchWorkspace(directory) == null) continue;
                 if (selected != null && !string.Equals(selected, directory, StringComparison.Ordinal))
-                    return new(null, "客户端提供了多个不同的工作目录。请只打开要使用的文件夹后重新连接。");
+                    return new(null, "客户端提供了多个不同的工作目录。请只打开要使用的文件夹后重新连接。", Conflicting: true);
                 selected = directory;
             }
             return selected == null ? new(null, "客户端尚未提供工作目录。请打开一个已绑定的文件夹后重新连接。") : new(selected);
@@ -154,15 +180,24 @@ internal sealed class GlobalMcpSession
             { return GlobalToolAccess.Denied("unavailable", "无法读取客户端工作目录，请重新连接。"); }
             if (update != Volatile.Read(ref rootUpdate)) return GlobalToolAccess.Denied("unavailable", "客户端正在更新工作目录。");
             var pinned = Volatile.Read(ref route);
+            if (pinned != null && root.ConflictsWith(pinned.cwd)) Interlocked.Exchange(ref changed, 1);
+            if (Volatile.Read(ref changed) != 0) return GlobalToolAccess.Denied("changed", "聊天的工作目录已变化，请重新连接。");
+            if (root.Directory == null) return GlobalToolAccess.Denied("unbound", root.Diagnostic!);
             if (pinned == null)
             {
-                if (root.Directory == null) return GlobalToolAccess.Denied("unbound", root.Diagnostic!);
                 var first = new GlobalMcpSession(session, device, root.Directory);
                 if (first.workspace == null) return await first.ResolveAsync(token);
                 pinned = Interlocked.CompareExchange(ref route, first, null) ?? first;
+                if (root.ConflictsWith(pinned.cwd)) Interlocked.Exchange(ref changed, 1);
             }
-            if (!string.Equals(pinned.cwd, root.Directory, StringComparison.Ordinal)) Interlocked.Exchange(ref changed, 1);
             if (Volatile.Read(ref changed) != 0) return GlobalToolAccess.Denied("changed", "聊天的工作目录已变化，请重新连接。");
+            if (call && update is { Result: { Directory: null, Conflicting: false } })
+            {
+                var confirmed = Task.FromResult(root);
+                if (Interlocked.CompareExchange(ref rootUpdate, confirmed, update) != update)
+                    return GlobalToolAccess.Denied("unavailable", "客户端正在更新工作目录。");
+                update = confirmed;
+            }
             var access = await pinned.ResolveAsync(token);
             return update == Volatile.Read(ref rootUpdate) && Volatile.Read(ref changed) == 0 ? access :
                 GlobalToolAccess.Denied("changed", "客户端工作目录正在变化，请重新确认。");
@@ -196,7 +231,8 @@ internal sealed class GlobalMcpSession
                     using var source = McpHost.UseClientSource(request.Server);
                     var scope = await Access(request.Server, true, token);
                     if (!scope.Tools.Contains(request.Params?.Name))
-                        return new CallToolResult { IsError = true, Content = [new TextContentBlock { Text = "此工具不在当前工作目录的有效授权范围内。" }] };
+                        return new CallToolResult { IsError = true, Content = [new TextContentBlock
+                            { Text = scope.Status == "ready" ? "此工具不在当前工作目录的有效授权范围内。" : scope.Message }] };
                     request.Services!.GetRequiredService<GlobalToolCall>().Access = scope;
                     return await next(request, token);
                 });
@@ -215,7 +251,7 @@ internal sealed class GlobalMcpSession
                     e is OperationCanceledException && !token.IsCancellationRequested)
                 { root = new(null, "无法读取客户端工作目录，请重新连接。"); }
                 if (Volatile.Read(ref rootUpdate) != refresh.Task) return;
-                if (Volatile.Read(ref route) is { } pinned && !string.Equals(pinned.cwd, root.Directory, StringComparison.Ordinal))
+                if (Volatile.Read(ref route) is { } pinned && root.ConflictsWith(pinned.cwd))
                     Interlocked.Exchange(ref changed, 1);
                 refresh.SetResult(root);
                 await server.SendNotificationAsync(NotificationMethods.ToolListChangedNotification, token);

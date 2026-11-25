@@ -47,11 +47,15 @@ internal sealed class EdgeAccessSetup(EdgeDesktopClient client)
         请在当前客户端的全局 MCP 设置中添加下面的 {ServerName}。将它配置为通过标准输入和输出通信的本地进程。使用客户端支持的添加命令或配置格式，原样保留 command 和 args。先检查现有接入。如果已有条目使用同一命令和参数，就沿用该条目。若同名条目使用不同配置，请先告诉我。保留其他配置。
 
         如果无法修改本机配置，请告诉我应该打开哪个设置页面，以及如何填入下面的值。配置后请尝试重新加载 MCP 并检查工具列表。如果需要我重启客户端，或者需要在 Edge 中绑定当前目录，请告诉我。
+
+        在已绑定的目录中，用可用的 nodicarta-context 或项目工具回查旧稿、依据和待办。用户确认选稿、批准下一步、采用决定或取得新凭据时，即使只要两句晨会摘要，也在简短回复前用可用的 nodicarta-sync 或项目工具核对已有记录，只保存获准共享的新变化。仅润色来稿、假设示例、仅本地、只读或不要记录的工作不写入共享项目。对外只使用适用于该受众的已批准口径。验证接入时只检查工具列表。
         """,
         $"""
         Register {ServerName} below in your client's global MCP settings as a local process using standard input and output. Use the client's supported MCP command or configuration format and preserve command and args exactly. Check existing entries first. Reuse any entry with the same command and arguments. If the same name already has different settings, ask me first. Keep other settings.
 
         If you cannot change the local configuration, tell me which settings page to open and how to enter the values below. After configuring it, try reloading MCP and listing the tools. Tell me if I need to restart the client or link the current folder in Edge.
+
+        In a linked folder, use nodicarta-context when available or the exposed project tools to look up prior drafts, evidence, and next steps. When the user confirms a draft, next step, decision, or new evidence, check existing knowledge with nodicarta-sync or the exposed project tools before the brief reply, even if they only ask for a stand-up summary. Save only authorized changes. Skip shared writes for wording-only edits, hypothetical examples, or read-only, local-only, and do-not-record work. Use only information approved for the external audience. When testing setup, only list the tools.
         """) + "\n\n```json\n" + GlobalStdioJson() + "\n```";
 
     public async Task<EdgeAccessContext> LoadAsync(DeviceProject project, LocalBinding binding, CancellationToken ct = default)
