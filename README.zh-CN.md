@@ -6,7 +6,9 @@
     <img src="src/ProjectHub.Edge.Desktop/Assets/edge.svg" width="40" height="40" align="absmiddle" alt=""></picture>&hairsp;脉络 · Nodicarta
 </h1>
 
-[English](README.md) · 简体中文 · [快速安装](#开始使用)
+<p align="center">
+  <a href="README.md">English</a> · 简体中文 · <a href="#开始使用">快速安装</a>
+</p>
 
 **当 AI 在计算机世界里已经接近全能，我们不可能只用它来写代码。**
 

@@ -6,7 +6,9 @@
   Nodicarta
 </h1>
 
-English · [简体中文](README.zh-CN.md) · [Quick start](#getting-started)
+<p align="center">
+  English · <a href="README.zh-CN.md">简体中文</a> · <a href="#getting-started">Quick start</a>
+</p>
 
 **When AI is capable across almost everything on a computer, we are not going to stop at using it to write code.**
 
