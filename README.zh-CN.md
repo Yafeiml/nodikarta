@@ -5,7 +5,7 @@
 
 # 脉络 · Nodicarta
 
-[English](README.md) · 简体中文
+[English](README.md) · 简体中文 · [快速安装](#开始使用)
 
 **当 AI 在计算机世界里已经接近全能，我们不可能只用它来写代码。**
 
@@ -78,10 +78,20 @@
 
 ## 开始使用
 
-脉络由两部分协同工作：**Core** 部署在一台持续在线的主机上，全天候守住各个项目的记忆、历史版本、共享原件与设备授权；**Edge** 安装在你的主力开发机、随身笔记本或远端业务主机上，把本地目录与你顺手的 AI 客户端（如 Codex、Claude、Antigravity、Cursor、OpenCode 等）接入获准的项目。
+Core 在一台持续在线的主机上保存项目记忆、共享原件和设备授权。Edge 安装在你使用 AI 客户端的设备上，把本地项目目录接入 Codex、Claude、Antigravity、Cursor 或 OpenCode 等客户端。
 
-你可以从一个新项目记下第一条决定开始，也可以对已有项目直接说一句「初始化项目资料，先给我看看准备整理哪些内容」，让智能体先帮你梳理出项目的第一份脉络。
+**1. 安装 Core 和数据库。** 准备一台已装好 Docker Engine、Docker Compose 插件和 curl 的 Linux x86-64 主机，运行下面这一条命令。安装器会启动 Core 和 PostgreSQL，自动生成数据库密码并为 Core 配好连接。
 
-- **部署与接入**：[Core 部署指南](deploy/public/README.zh-CN.md) · [Windows 桌面端下载](https://github.com/Yafeiml/nodikarta/releases/latest) · [Edge 桌面使用说明](docs/operations/WINDOWS_EDGE_DESKTOP.md)
+```sh
+(installer=$(mktemp) && trap 'rm -f "$installer"' EXIT && curl -fsSL https://raw.githubusercontent.com/Yafeiml/nodikarta/main/deploy/public/install.sh -o "$installer" && sh "$installer")
+```
+
+**2. 打开 Core 网页。** 安装完成后，终端会显示网页地址和一次性安装码。在浏览器打开这个地址，输入安装码，创建管理员账号。登录后，点「项目 → 创建项目」。
+
+**3. 接入第一台设备。** 在 Core 的「设备 → 添加设备」中授予项目权限，生成配对码。在使用 AI 客户端的电脑上安装 Edge，填入 Core 地址和配对码，再绑定本地项目目录。[下载 Edge](https://github.com/Yafeiml/nodikarta/releases/latest) · [Edge 桌面使用说明](docs/operations/WINDOWS_EDGE_DESKTOP.md)
+
+你可以在新项目中记下第一条决定，也可以在已有项目目录里对智能体说「初始化项目资料，先给我看看准备整理哪些内容」。
+
+- [Core 部署指南、外部 PostgreSQL 与备份](deploy/public/README.zh-CN.md)
 - **深入了解**：[内置通用 Skills](skills/) · [Core 源码](src/ProjectHub.Core/) · [Edge 桌面源码](src/ProjectHub.Edge.Desktop/) · [Edge MCP 与 CLI 源码](src/ProjectHub.Edge/)
 - **开源许可**：[MIT 许可证](LICENSE)

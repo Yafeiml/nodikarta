@@ -5,7 +5,7 @@
 
 # Nodicarta
 
-English · [简体中文](README.zh-CN.md)
+English · [简体中文](README.zh-CN.md) · [Quick start](#getting-started)
 
 **When AI is capable across almost everything on a computer, we are not going to stop at using it to write code.**
 
@@ -78,10 +78,20 @@ Today, you can self-host Nodicarta to run multiple projects across your own devi
 
 ## Getting Started
 
-Nodicarta works in two parts: **Core** runs on an always-on host to safeguard your projects' memory, version history, shared originals, and device permissions; **Edge** runs on your workstation, travel laptop, or remote service hosts to connect local folders and your preferred AI clients (Codex, Claude, Antigravity, Cursor, OpenCode, and others) to authorized projects.
+Core keeps your project memory, shared files and device permissions on an always-on host. Edge connects a local project folder to the AI client you use on each device, including Codex, Claude, Antigravity, Cursor and OpenCode.
 
-Start from a brand-new project by recording its first decision, or ask in an existing project folder—“Initialize this project's materials, and show me a preview first”—to let your assistant distill an initial project memory from what you already have.
+**1. Install Core and its database.** On a Linux x86-64 machine with Docker Engine, the Docker Compose plugin and curl installed, run this command. It starts Core and PostgreSQL, generates the database credentials and connects Core to its database.
 
-- **Deploy & connect**: [Core deployment guide](deploy/public/README.md) · [Windows desktop download](https://github.com/Yafeiml/nodikarta/releases/latest) · [Edge desktop guide](docs/operations/WINDOWS_EDGE_DESKTOP.en.md)
+```sh
+(installer=$(mktemp) && trap 'rm -f "$installer"' EXIT && curl -fsSL https://raw.githubusercontent.com/Yafeiml/nodikarta/main/deploy/public/install.sh -o "$installer" && sh "$installer")
+```
+
+**2. Open your Core web page.** When installation finishes, the terminal prints the web address and a one-time setup code. Open that address, enter the code and create your administrator account. Sign in and choose **Projects → Create project**.
+
+**3. Connect your first device.** In Core, choose **Devices → Add device**, grant access to the project and generate a pairing code. Install Edge on the device where you use your AI client. Enter the Core address and the pairing code in Edge, then bind your project folder. [Download Edge](https://github.com/Yafeiml/nodikarta/releases/latest) · [Edge desktop guide](docs/operations/WINDOWS_EDGE_DESKTOP.en.md)
+
+Record the first decision in a new project, or ask your assistant in an existing project folder, “Initialize this project's materials, and show me a preview first.”
+
+- [Core deployment guide, external PostgreSQL and backups](deploy/public/README.md)
 - **Go deeper**: [Bundled Skills](skills/) · [Core source](src/ProjectHub.Core/) · [Edge desktop source](src/ProjectHub.Edge.Desktop/) · [Edge MCP & CLI source](src/ProjectHub.Edge/)
 - **License**: [MIT License](LICENSE)
